@@ -29,8 +29,8 @@ export function AssuranceApp() {
  const review = reviews.filter(r => Array.isArray(r.evidence)).at(-1)
  const claim = review?.claim ?? 'all'
  const inProgress = !!review && review.stage !== 'approved'
- function initiate(type: ReviewType) { if (!ready || role !== 'Product Management' || inProgress) return; setReviews(old => [...old, createReview(`ESG-${String(old.length + 1).padStart(3,'0')}`, type, claim)]); }
- function act(action: Action) { if (!ready) return; setReviews(old => old.map((r, i) => i === old.length - 1 ? transition(r, action, role) : r)) }
+ function initiate(type: ReviewType, comment = 'Review initiated by Product Management.') { if (!ready || role !== 'Product Management' || inProgress) return; setReviews(old => [...old, (() => { const r = createReview(`ESG-${String(old.length + 1).padStart(3,'0')}`, type, claim); return { ...r, events: r.events.map(e => ({ ...e, comment: comment.trim(), text: `${e.text} Comment: ${comment.trim()}` })) } })()]); }
+ function act(action: Action, comment: string) { if (!ready) return; setReviews(old => old.map((r, i) => i === old.length - 1 ? transition(r, action, role, comment) : r)) }
  function save(records: EvidenceRecord[]) { if (!ready) return; setReviews(old => old.map(r => r.id === review?.id ? saveEvidence(r, records, role) : r)) }
  function flag() { if (!ready || role !== 'Risk / Compliance' || inProgress) return; setReviews(old => [...old, createReview(`ESG-${String(old.length + 1).padStart(3,'0')}`, 'trigger', claim, true)]); }
  function reset() { setReviews([]); setSelected(null); setTab('dashboard'); setRole('Product Management'); setResetting(false); setStorageError(false) }

@@ -9,7 +9,7 @@ export type Role = typeof roles[number]
 export type Claim = keyof typeof claims
 export type ReviewType = 'routine' | 'trigger'
 export type Stage = 'requested' | 'evidence' | 'verify' | 'technical' | 'classify' | 'risk' | 'correct' | 'recheck' | 'closure' | 'ready' | 'approved'
-export type Entry = { at: string; role: string; text: string; evidence?: EvidenceRecord[]; report?: CheckReport }
+export type Entry = { at: string; role: string; text: string; comment?: string; evidence?: EvidenceRecord[]; report?: CheckReport }
 export type Review = { id: string; type: ReviewType; target: 'proposed' | 'existing'; claim: Claim; original: Claim; stage: Stage; result: 'pass' | 'fail' | null; exception: 'open' | 'resolved' | null; material: boolean | null; risk: 'pending' | 'action-required' | 'resolved' | null; events: Entry[]; evidence?: EvidenceRecord[]; report?: CheckReport }
 export type Action = 'initiate' | 'evidence' | 'verify' | 'technical' | 'material' | 'nonmaterial' | 'risk' | 'correct' | 'recheck' | 'close' | 'approve'
 export function saveEvidence(r: Review, records: EvidenceRecord[], actor: Role): Review {
@@ -27,7 +27,7 @@ export function owner(r?: Review): Role {
  if (['risk', 'closure', 'approved'].includes(r.stage)) return 'Risk / Compliance'
  return 'Product Management'
 }
-export function transition(r: Review, action: Action, actor: Role): Review {
+export function transition(r: Review, action: Action, actor: Role, comment = ''): Review {
  if (actor === 'Internal Audit' || actor !== owner(r)) return r
  let patch: Partial<Review> = {}; let text = ''
  if (action === 'initiate' && r.stage === 'requested') { patch = { stage: 'evidence' }; text = 'Product Management accepted the monitoring request and initiated a Trigger-Event Review. Evidence coordination assigned to Disclosure Team.' }
@@ -45,7 +45,7 @@ export function transition(r: Review, action: Action, actor: Role): Review {
  else if (action === 'close' && r.stage === 'closure' && r.result === 'pass' && r.material && r.risk === 'action-required') { patch = { risk: 'resolved', exception: 'resolved', stage: 'ready' }; text = 'Risk / Compliance reviewed qualified wording and satisfactory technical re-verification. Material concern cleared; exception closed. Product Management may complete authorised review.' }
  else if (action === 'approve' && r.stage === 'ready' && r.result === 'pass' && r.exception !== 'open' && (!r.material || r.risk === 'resolved')) { patch = { stage: 'approved' }; text = 'Newly drafted PDS-001 approved following evidence cross-checks and authorised review. Ongoing monitoring assigned to Risk / Compliance.' }
  else return r
- return { ...r, ...patch, events: [...r.events, { at: new Date().toISOString(), role: actor, text, ...(patch.report ? { report: patch.report, evidence: patch.report.snapshot } : {}) }] }
+ return { ...r, ...patch, events: [...r.events, { at: new Date().toISOString(), role: actor, text, ...(comment.trim() ? { comment: comment.trim(), text: `${text} Comment: ${comment.trim()}` } : {}), ...(patch.report ? { report: patch.report, evidence: patch.report.snapshot } : {}) }] }
 }
 export function status(r?: Review) {
  if (!r) return 'Not reviewed'
