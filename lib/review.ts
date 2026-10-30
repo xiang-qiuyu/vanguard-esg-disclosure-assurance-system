@@ -45,7 +45,7 @@ export function transition(r: Review, action: Action, actor: Role, comment = '')
  else if (action === 'close' && r.stage === 'closure' && r.result === 'pass' && r.material && r.risk === 'action-required') { patch = { risk: 'resolved', exception: 'resolved', stage: 'ready' }; text = 'Risk / Compliance reviewed qualified wording and satisfactory technical re-verification. Material concern cleared; exception closed. Product Management may complete authorised review.' }
  else if (action === 'approve' && r.stage === 'ready' && r.result === 'pass' && r.exception !== 'open' && (!r.material || r.risk === 'resolved')) { patch = { stage: 'approved' }; text = 'Newly drafted PDS-001 approved following evidence cross-checks and authorised review. Ongoing monitoring assigned to Risk / Compliance.' }
  else return r
- return { ...r, ...patch, events: [...r.events, { at: new Date().toISOString(), role: actor, text, ...(comment.trim() ? { comment: comment.trim(), text: `${text} Comment: ${comment.trim()}` } : {}), ...(patch.report ? { report: patch.report, evidence: patch.report.snapshot } : {}) }] }
+ return { ...r, ...patch, events: [...r.events, { at: new Date().toISOString(), role: actor, text, ...(comment.trim() ? { comment: comment.trim() } : {}), ...(patch.report ? { report: patch.report, evidence: patch.report.snapshot } : {}) }] }
 }
 export function status(r?: Review) {
  if (!r) return 'Not reviewed'
