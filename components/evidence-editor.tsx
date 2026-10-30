@@ -1,21 +1,48 @@
 "use client"
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { dummyEvidence, validateEvidence, type EvidenceRecord, type Source } from '@/lib/evidence'
-const empty = (): EvidenceRecord => ({ id: '', source: 'Bloomberg', security: '', name: '', included: true, result: 'passed', applicable: true, criterion: '', note: '' })
+import { illustrativeEvidence, validateEvidence, type EvidenceRecord } from '@/lib/evidence'
+
 export function EvidenceEditor({ records, editable, save }: { records: EvidenceRecord[]; editable: boolean; save: (records: EvidenceRecord[]) => void }) {
- const [draft, setDraft] = useState<EvidenceRecord | null>(null)
- const [editing, setEditing] = useState<string | null>(null)
+ const initial = records.length === 2 ? records : illustrativeEvidence()
+ const [bond, setBond] = useState(initial.find(r => r.source === 'Bloomberg')!)
+ const [research, setResearch] = useState(initial.find(r => r.source === 'MSCI')!)
  const [message, setMessage] = useState('')
- const [confirm, setConfirm] = useState(false)
- function preload() { if (records.length && !confirm) { setConfirm(true); return } save(dummyEvidence()); setConfirm(false); setDraft(null); setMessage('Saved 12 simulated evidence records covering six bonds.') }
- function submit(e: React.FormEvent) { e.preventDefault(); if (!draft || !editable) return; const next = { ...draft, id: editing ?? `EV-${crypto.randomUUID().slice(0,8)}`, security: draft.security.trim().toUpperCase() }; const updated = editing ? records.map(r => r.id === editing ? next : r) : [...records, next]; const error = validateEvidence(updated); if (error) { setMessage(error); return } save(updated); setDraft(null); setMessage(`Saved ${next.id}. Fresh verification is required.`) }
- return <section className="border-t p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">Supporting evidence</h3><span className="text-sm text-muted-foreground">Simulated records · {records.length} saved</span></div><p className="mt-2 text-sm text-muted-foreground">Join Bloomberg index records to MSCI research by security ID. Internal notes are potential review triggers, not proof. All bond names and evidence are illustrative, not real Bloomberg or MSCI data.</p>
- {editable && <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => { setDraft(empty()); setEditing(null); setMessage('') }}>Add evidence record</Button><Button size="sm" variant="outline" onClick={preload}>{confirm ? 'Confirm replace with dummy evidence' : 'Preload dummy evidence'}</Button>{confirm && <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>Cancel replacement</Button>}</div>}
- {message && <p role="status" className="mt-2 text-sm">{message}</p>}
- {editable && draft && <form className="mt-3 flex flex-col gap-3 rounded border bg-background p-3" onSubmit={submit}><p className="text-sm font-semibold">{editing ? `Edit ${editing}` : 'New evidence record'}</p><div className="grid gap-3 sm:grid-cols-2"><label className="flex flex-col gap-1 text-sm">Source<select className="rounded border bg-card p-2" value={draft.source} onChange={e => setDraft({ ...draft, source: e.target.value as Source })}><option value="Bloomberg">Bloomberg · constituent / methodology</option><option value="MSCI">MSCI · ESG screening</option><option value="Internal">Internal · communication / concern</option></select></label><label className="flex flex-col gap-1 text-sm">Security ID<input required maxLength={40} className="rounded border bg-card p-2" value={draft.security} onChange={e => setDraft({ ...draft, security: e.target.value })} placeholder="SIM-001 (or FUND for a general note)" /></label>
- {draft.source === 'Bloomberg' && <><label className="flex flex-col gap-1 text-sm">Bond name<input required maxLength={120} className="rounded border bg-card p-2" value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} /></label><label className="flex flex-col gap-1 text-sm">Index / Fund inclusion<select className="rounded border bg-card p-2" value={String(draft.included)} onChange={e => setDraft({ ...draft, included: e.target.value === 'true' })}><option value="true">Included</option><option value="false">Not included</option></select></label></>}
- {draft.source === 'MSCI' && <><label className="flex flex-col gap-1 text-sm">Screening result<select className="rounded border bg-card p-2" value={draft.result} onChange={e => setDraft({ ...draft, result: e.target.value as EvidenceRecord['result'] })}><option value="passed">Screened and passed</option><option value="unscreened">Not screened</option><option value="failed">Screened and failed</option></select></label><label className="flex flex-col gap-1 text-sm">Exclusion criterion<input required={draft.result === 'failed'} maxLength={120} className="rounded border bg-card p-2" value={draft.criterion} onChange={e => setDraft({ ...draft, criterion: e.target.value })} /></label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.applicable} onChange={e => setDraft({ ...draft, applicable: e.target.checked })} />Criterion applies to this Fund</label></>}
- </div><label className="flex flex-col gap-1 text-sm">{draft.source === 'Bloomberg' ? 'Methodology / inclusion rationale' : draft.source === 'MSCI' ? 'Research evidence / change rationale' : 'Communication / concern'}<textarea required maxLength={1500} rows={3} className="rounded border bg-card p-2" value={draft.note} onChange={e => setDraft({ ...draft, note: e.target.value })} /></label><p className="text-sm text-muted-foreground">Only saved records are checked. Changes represent simulated source updates, not permission to alter real evidence to obtain a pass.</p><div className="flex gap-2"><Button size="sm" type="submit">Save record</Button><Button size="sm" type="button" variant="outline" onClick={() => setDraft(null)}>Cancel edit</Button></div></form>}
- <div className="mt-3 flex flex-col divide-y">{records.map(r => <div key={r.id} className="flex items-start justify-between gap-2 py-3"><div className="min-w-0 text-sm"><p className="font-semibold">{r.source} · {r.id} · {r.security}</p><p>{r.source === 'Bloomberg' ? `${r.name} · ${r.included ? 'Included' : 'Not included'}` : r.source === 'MSCI' ? `${r.result === 'unscreened' ? 'Not screened' : `Screened and ${r.result}`} · ${r.criterion || 'No criterion specified'} · ${r.applicable ? 'Applicable' : 'Not applicable'}` : 'Potential review trigger only'}</p><p className="mt-1 break-words text-muted-foreground">{r.note}</p></div>{editable && <Button size="sm" variant="outline" aria-label={`Edit ${r.id}`} onClick={() => { setEditing(r.id); setDraft({ ...r }); setMessage('') }}>Edit</Button>}</div>)}</div>{!records.length && <p className="mt-3 text-sm text-muted-foreground">No evidence saved. The Disclosure Team can add records or preload the six-bond demonstration.</p>}</section>
+ const saved = records.length > 0
+
+ function submit(e: React.FormEvent) {
+  e.preventDefault()
+  if (!editable) return
+  const next = [{ ...bond, security: bond.security.trim().toUpperCase() }, { ...research, security: research.security.trim().toUpperCase() }]
+  const error = validateEvidence(next)
+  if (error) { setMessage(error); return }
+  save(next)
+  setMessage('Evidence records saved. Fresh verification is required.')
+ }
+
+ const field = 'rounded border bg-card p-2 text-sm disabled:opacity-70'
+ return <section className="border-t p-4">
+  <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">Supporting evidence</h3><span className="text-sm text-muted-foreground">{saved ? 'Records saved' : 'Not yet confirmed'}</span></div>
+  <p className="mt-2 text-sm text-muted-foreground">Illustrative records only, not real Bloomberg or MSCI data. The Disclosure Team enters or confirms both records.</p>
+  <form className="mt-3 flex flex-col gap-3" onSubmit={submit}>
+   <fieldset className="flex flex-col gap-3 rounded border bg-background p-3" disabled={!editable}>
+    <legend className="px-1 text-sm font-semibold">Bloomberg · index constituent ({bond.id})</legend>
+    <div className="grid gap-3 sm:grid-cols-2">
+     <label className="flex flex-col gap-1 text-sm">Security ID<input required maxLength={40} className={field} value={bond.security} onChange={e => setBond({ ...bond, security: e.target.value })} /></label>
+     <label className="flex flex-col gap-1 text-sm">Security name<input required maxLength={120} className={field} value={bond.name} onChange={e => setBond({ ...bond, name: e.target.value })} /></label>
+     <label className="flex flex-col gap-1 text-sm">Fund inclusion<select className={field} value={String(bond.included)} onChange={e => setBond({ ...bond, included: e.target.value === 'true' })}><option value="true">Included</option><option value="false">Not included</option></select></label>
+    </div>
+   </fieldset>
+   <fieldset className="flex flex-col gap-3 rounded border bg-background p-3" disabled={!editable}>
+    <legend className="px-1 text-sm font-semibold">MSCI · ESG screening record ({research.id})</legend>
+    <div className="grid gap-3 sm:grid-cols-2">
+     <label className="flex flex-col gap-1 text-sm">Security ID<input required maxLength={40} className={field} value={research.security} onChange={e => setResearch({ ...research, security: e.target.value })} /></label>
+     <label className="flex flex-col gap-1 text-sm">Research available<select className={field} value={String(research.researchAvailable)} onChange={e => setResearch({ ...research, researchAvailable: e.target.value === 'true' })}><option value="false">No research available</option><option value="true">Research available</option></select></label>
+     <label className="flex flex-col gap-1 text-sm">Screening status<select className={field} value={research.result} onChange={e => setResearch({ ...research, result: e.target.value as EvidenceRecord['result'] })}><option value="unscreened">Not screened</option><option value="screened">Screened</option></select></label>
+    </div>
+   </fieldset>
+   {editable && <div className="flex flex-wrap items-center gap-2"><Button size="sm" type="submit">{saved ? 'Save changes' : 'Confirm evidence records'}</Button></div>}
+   {message && <p role="status" className="text-sm">{message}</p>}
+  </form>
+ </section>
 }

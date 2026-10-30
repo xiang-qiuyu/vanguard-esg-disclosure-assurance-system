@@ -18,14 +18,14 @@ export function AssuranceApp() {
  const [storageError, setStorageError] = useState(false)
  const [resetting, setResetting] = useState(false)
  useEffect(() => {
-  try { const raw = localStorage.getItem(KEY); if (raw) { const data = JSON.parse(raw); if (![1,2,3].includes(data.version) || !Array.isArray(data.reviews) || !data.reviews.every((r: Review) => typeof r.id === 'string' && Array.isArray(r.events) && ['all','qualified'].includes(r.claim))) throw new Error('Invalid data'); const restored: Review[] = data.reviews.map((r: Review) => {
+  try { const raw = localStorage.getItem(KEY); if (raw && JSON.parse(raw).version === 4) { const data = JSON.parse(raw); if (data.version !== 4 || !Array.isArray(data.reviews) || !data.reviews.every((r: Review) => typeof r.id === 'string' && Array.isArray(r.events) && ['all','qualified'].includes(r.claim))) throw new Error('Invalid data'); const restored: Review[] = data.reviews.map((r: Review) => {
    if (data.version >= 2) return r
    const openMaterial = r.material && r.stage !== 'approved'
    return { ...r, stage: openMaterial && r.stage === 'ready' ? 'closure' : r.stage, exception: openMaterial ? 'open' : r.exception, risk: openMaterial && r.risk === 'resolved' ? 'action-required' : r.risk }
   }); setReviews(restored) } } catch { setStorageError(true) }
   setReady(true)
  }, [])
- useEffect(() => { if (ready && !storageError) { try { localStorage.setItem(KEY, JSON.stringify({ version: 3, reviews })) } catch { setStorageError(true) } } }, [reviews, ready, storageError])
+ useEffect(() => { if (ready && !storageError) { try { localStorage.setItem(KEY, JSON.stringify({ version: 4, reviews })) } catch { setStorageError(true) } } }, [reviews, ready, storageError])
  const review = reviews.filter(r => Array.isArray(r.evidence)).at(-1)
  const claim = review?.claim ?? 'all'
  const inProgress = !!review && review.stage !== 'approved'
