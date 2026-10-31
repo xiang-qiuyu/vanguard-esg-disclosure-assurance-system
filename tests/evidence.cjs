@@ -1,45 +1,30 @@
 const assert = require('node:assert/strict')
-const fs = require('node:fs')
-const ts = require('typescript')
-require.extensions['.ts'] = (module, filename) => module._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, filename)
+const { test } = require('node:test')
+require('./load-ts.cjs')
 const { crossCheck, illustrativeEvidence, validateEvidence } = require('../lib/evidence.ts')
-const { createReview, transition, saveEvidence, owner, roles, status } = require('../lib/review.ts')
-const evidence = illustrativeEvidence()
-assert.equal(evidence.length, 2)
-assert.ok(evidence.every(r => r.security === 'GOV-001'))
-const report = crossCheck('all', evidence)
-assert.equal(report.findings.length, 1)
-assert.deepEqual(report.findings[0].evidenceIds, ['BBG-001', 'MSCI-001'])
-assert.equal(crossCheck('qualified', evidence).findings.length, 0)
-assert.equal(crossCheck('all', evidence.map(r => r.source === 'MSCI' ? { ...r, researchAvailable: true, result: 'screened' } : r)).findings.length, 0)
-assert.equal(crossCheck('all', []).blockers.length, 1)
-assert.ok(validateEvidence(evidence.map(r => r.source === 'MSCI' ? { ...r, security: 'GOV-002' } : r)))
-for (const material of [false, true]) {
- let r = createReview('TEST', 'routine', 'all')
- const step = action => {
-  const role = owner(r)
-  for (const other of roles.filter(v => v !== role)) assert.equal(transition(r, action, other), r)
-  const next = transition(r, action, role)
-  assert.notEqual(next, r, action)
-  r = next
- }
- assert.equal(transition(r, 'evidence', 'Disclosure Team'), r)
- assert.equal(saveEvidence(r, evidence, 'Product Management'), r)
- r = saveEvidence(r, evidence, 'Disclosure Team')
- step('evidence'); step('verify')
- assert.equal(r.result, 'fail'); assert.equal(r.exception, 'open')
- step('technical'); step(material ? 'material' : 'nonmaterial')
- if (material) { assert.equal(transition(r, 'correct', 'Product Management'), r); step('risk') }
- const evidenceBefore = JSON.stringify(r.evidence)
- step('correct'); assert.equal(r.claim, 'qualified'); assert.equal(r.stage, 'recheck'); assert.equal(status(r), 'Awaiting Evidence Recheck'); assert.equal(r.result, null)
- assert.equal(transition(r, 'verify', 'Product Strategy'), r)
- step('recheck'); assert.equal(JSON.stringify(r.evidence), evidenceBefore); assert.equal(r.result, null)
- step('verify'); assert.equal(r.result, 'pass'); assert.equal(r.report.findings.length, 0)
- assert.ok(r.events.some(e => e.text.includes('Discrepancy identified')))
- step('technical')
- if (material) { assert.equal(r.stage, 'closure'); assert.equal(transition(r, 'approve', 'Product Management'), r); step('close') }
- step('approve')
- assert.equal(r.stage, 'approved'); assert.equal(status(r), 'Cleared')
- assert.equal(r.events.filter(e => e.report).length, 2)
-}
-console.log('PASS: single GOV-001 discrepancy, corrected wording passes, role guards, both correction paths, approval gates and history snapshots.')
+
+test('links the unscreened GOV-001 discrepancy to both evidence records', () => {
+  const evidence = illustrativeEvidence()
+  assert.equal(evidence.length, 2)
+  assert.ok(evidence.every(r => r.security === 'GOV-001'))
+  const report = crossCheck('all', evidence)
+  assert.equal(report.findings.length, 1)
+  assert.deepEqual(report.findings[0].evidenceIds, ['BBG-001', 'MSCI-001'])
+})
+test('qualified wording and genuinely screened evidence pass', () => {
+  assert.equal(crossCheck('qualified', illustrativeEvidence()).findings.length, 0)
+  const screened = illustrativeEvidence().map(r => r.source === 'MSCI' ? { ...r, researchAvailable: true, result: 'screened' } : r)
+  assert.equal(crossCheck('all', screened).findings.length, 0)
+})
+test('mandatory evidence includes source references, notes, name, and matching security IDs', () => {
+  assert.ok(validateEvidence([]))
+  assert.ok(validateEvidence(illustrativeEvidence().slice(0, 1)))
+  for (const patch of [{ id: '' }, { security: ' ' }, { note: '' }]) {
+    assert.ok(validateEvidence(illustrativeEvidence().map(r => ({ ...r, ...patch }))))
+  }
+  assert.ok(validateEvidence(illustrativeEvidence().map(r => r.source === 'Bloomberg' ? { ...r, name: '' } : r)))
+  assert.ok(validateEvidence(illustrativeEvidence().map(r => r.source === 'MSCI' ? { ...r, security: 'GOV-002' } : r)))
+  assert.ok(validateEvidence(illustrativeEvidence().map(r => r.source === 'MSCI' ? { ...r, researchAvailable: undefined } : r)))
+  assert.ok(validateEvidence(illustrativeEvidence().map(r => r.source === 'MSCI' ? { ...r, result: 'missing' } : r)))
+  assert.equal(crossCheck('all', []).blockers.length, 1)
+})

@@ -1,41 +1,119 @@
 "use client"
+
 import { useState } from 'react'
+import { LockKeyhole, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/status-badge'
 import { EvidenceEditor } from '@/components/evidence-editor'
 import { CheckResults } from '@/components/check-results'
-import { crossCheck, type EvidenceRecord } from '@/lib/evidence'
-import { claims, fund, owner, status, task, type Review, type Role, type ReviewType, type Action, type Claim } from '@/lib/review'
+import { type EvidenceRecord } from '@/lib/evidence'
+import { claims, fund, owner, workflow, task, canEditDraft, canEditEvidence, evidenceConfirmed, actionBlocker, decisionBlocker, submissionBlockers, type Review, type User, type ReviewType, type Action, type Claim, type DraftPatch, type DisclosureChecks } from '@/lib/review'
 
-export function DisclosureReview({ review, claim, role, initiate, act, ready, save }: { review?: Review; claim: Claim; role: Role; initiate: (type: ReviewType, comment?: string) => void; act: (a: Action, comment: string) => void; ready: boolean; save: (records: EvidenceRecord[]) => void }) {
- const [type, setType] = useState<ReviewType>('routine')
- const [comment, setComment] = useState('')
- const blockers = crossCheck(claim, review?.evidence ?? []).blockers
- const canEditEvidence = ready && role === 'Disclosure Team' && !!review && ['evidence', 'recheck'].includes(review.stage)
- const editable = role === owner(review) && role !== 'Internal Audit'
- const canStart = !!review && review.stage === 'approved' && role === 'Product Management'
- function submit(action: Action) { act(action, comment); setComment('') }
- return <div className="flex flex-col gap-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-xl font-semibold">ESG screening disclosure</h2><p className="mt-1 text-sm text-muted-foreground">PDS-001 · Newly drafted PDS{review ? ` · ${review.id}` : ''}</p></div><Badge variant={review?.exception === 'open' ? 'destructive' : 'outline'} className={status(review) === 'Pending Review' ? 'border-yellow-300 bg-yellow-100 text-yellow-900 dark:border-yellow-700 dark:bg-yellow-950 dark:text-yellow-200' : status(review) === 'Awaiting Verification' ? 'border-blue-300 bg-blue-100 text-blue-900 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-200' : undefined}>{status(review)}</Badge></div>
- <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,1fr)]"><section className="panel"><div className="border-b p-4"><p className="eyebrow">Fund</p><h3 className="mt-2 font-semibold">{fund}</h3></div><div className="p-4"><h3 className="text-sm font-semibold">Current disclosure wording</h3><blockquote className="mt-3 text-base leading-relaxed">&ldquo;{claims[claim]}&rdquo;</blockquote><p className="mt-2 text-xs text-muted-foreground">{claim === 'all' ? 'Illustrative draft claim for this prototype, not verbatim historical Vanguard wording.' : 'Predefined illustrative amendment applied by Product Management, not verbatim Vanguard wording.'}</p></div>
- {review?.report && <div className="flex flex-col gap-3 border-t p-4">{review.result === 'pass' && review.exception && <Badge variant="outline" className="self-start">Verification Cleared</Badge>}<CheckResults report={review.report} /><p className="text-xs text-muted-foreground">Checks one illustrative security (GOV-001) using simplified prototype rules. A result here does not establish full regulatory compliance.</p></div>}
- <EvidenceEditor key={`${review?.id}-${canEditEvidence}`} records={review?.evidence ?? []} editable={canEditEvidence} save={save} />
- </section>
- <aside className="flex flex-col gap-4"><section className="panel"><div className="border-b p-4"><h3 className="font-semibold">{role === 'Internal Audit' ? 'Read-only record' : 'Your actions'}</h3><p className="mt-1 text-sm text-muted-foreground">{role}</p></div><div className="flex flex-col gap-3 p-4" aria-live="polite">
- {role === 'Internal Audit' ? <p className="text-sm leading-relaxed">Inspect evidence and decisions in Review History. Internal Audit does not perform verification, correction or approval.</p> : canStart ? <><p className="text-sm text-muted-foreground">Open a review of this newly drafted PDS. Evidence preparation will be assigned to the Disclosure Team.</p><label className="flex flex-col gap-2 text-sm font-medium">Review type<select className="rounded border bg-card px-3 py-2" value={type} onChange={e => setType(e.target.value as ReviewType)}><option value="routine">Routine Review · new PDS</option><option value="trigger">Trigger-Event Review · new concern</option></select></label><Button disabled={!ready} onClick={() => initiate(type)}>Initiate review</Button></> : <>{editable ? <p className="text-sm leading-relaxed">{task(review)}</p> : <div className="flex flex-col gap-2 rounded border bg-background p-3 text-sm"><dl className="flex flex-col gap-2"><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Responsible department</dt><dd className="text-right font-medium">{owner(review)}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Current status</dt><dd className="text-right font-medium">{status(review)}</dd></div></dl><p className="text-muted-foreground">No action is required from your role at this point.</p></div>}
- {editable && review?.stage !== 'approved' && <label className="flex flex-col gap-2 text-sm font-medium">Comments<textarea className="min-h-24 rounded border bg-card px-3 py-2 font-normal" value={comment} onChange={e => setComment(e.target.value)} placeholder="Add optional comments before moving this review to the next stage" /></label>}
- {editable && !review && <><label className="flex flex-col gap-2 text-sm font-medium">Review type<select className="rounded border bg-card px-3 py-2" value={type} onChange={e => setType(e.target.value as ReviewType)}><option value="routine">Routine Review - new PDS</option><option value="trigger">Trigger-Event Review - new concern</option></select></label><Button disabled={!ready} onClick={() => { initiate(type, comment); setComment('') }}>Initiate review</Button></>}
- {editable && review?.stage === 'requested' && <Button onClick={() => submit('initiate')}>Initiate Trigger-Event Review</Button>}
- {editable && review?.stage === 'evidence' && <><Button disabled={blockers.length > 0} onClick={() => submit('evidence')}>Mark evidence ready</Button>{blockers.map(b => <p key={b} className="text-sm text-muted-foreground">{b}</p>)}</>}
- {editable && review?.stage === 'verify' && <><p className="text-sm text-muted-foreground">Compares the PDS claim against the saved Bloomberg and MSCI records for GOV-001. An included security that is not screened contradicts a claim that all securities are screened. This checks one illustrative security under simplified rules and does not establish full regulatory compliance.</p><Button onClick={() => submit('verify')}>{review.exception ? 'Run re-verification' : 'Run Verification'}</Button></>}
- {editable && review?.stage === 'technical' && <Button onClick={() => submit('technical')}>Confirm technical finding</Button>}
- {editable && review?.stage === 'classify' && <><p className="text-sm text-muted-foreground">Use simulated human judgement to determine materiality; this is not a legal assessment.</p><Button onClick={() => submit('material')}>Classify as material</Button><Button variant="outline" onClick={() => submit('nonmaterial')}>Classify as non-material</Button></>}
- {editable && review?.stage === 'risk' && <><p className="text-sm text-muted-foreground">Assess the finding and linked records. Require the PDS to acknowledge that some securities are not screened. The material concern stays open until second-line closure.</p><Button onClick={() => submit('risk')}>Record assessment & require correction</Button></>}
- {editable && review?.stage === 'correct' && <><p className="text-sm font-medium">Predefined proposed amendment</p><p className="text-sm text-muted-foreground">The wording below is fixed for this prototype. Free-text editing of the PDS is not available.</p><blockquote className="border bg-background p-3 text-sm leading-relaxed">&ldquo;{claims.qualified}&rdquo;</blockquote><Button onClick={() => submit('correct')}>Apply amendment & submit for re-review</Button><p className="text-sm text-muted-foreground">Applies this predefined amendment to the PDS to acknowledge that some securities are not screened, then routes it to the Disclosure Team for an evidence recheck.</p></>}
- {editable && review?.stage === 'recheck' && <><p className="text-sm text-muted-foreground">Check that the saved Bloomberg and MSCI records for GOV-001 are complete and still relevant to the amended PDS. Unchanged records do not need to be re-entered.</p><Button disabled={blockers.length > 0} onClick={() => submit('recheck')}>Evidence Ready for Re-verification</Button>{blockers.map(b => <p key={b} className="text-sm text-muted-foreground">{b}</p>)}</>}
- {editable && review?.stage === 'closure' && <><p className="text-sm text-muted-foreground">Review the amended wording and confirmed passing result. Clearing this concern resolves the material exception and enables Product Management to complete its review.</p><Button onClick={() => submit('close')}>Clear material concern</Button></>}
- {editable && review?.stage === 'ready' && <Button onClick={() => submit('approve')}>Complete authorised review & mark Cleared</Button>}
- {editable && review?.stage === 'approved' && <p className="text-sm text-muted-foreground">Use Dashboard to flag a new screening concern.</p>}</>}
- </div></section>
- {review && <section className="panel p-4"><h3 className="text-sm font-semibold">Review summary</h3><dl className="mt-3 flex flex-col gap-3 text-sm"><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Review type</dt><dd>{review.type === 'routine' ? 'Routine' : 'Trigger-event'}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Exception</dt><dd>{review.exception ?? 'None recorded'}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Materiality</dt><dd>{review.material === null ? 'Not classified' : review.material ? 'Material' : 'Non-material'}</dd></div><div className="flex justify-between gap-3"><dt className="text-muted-foreground">Risk / Compliance</dt><dd>{review.risk === 'resolved' ? 'Concern cleared' : review.risk === 'action-required' ? 'Corrective action required' : review.risk === 'pending' ? 'Assessment pending' : 'Not required'}</dd></div></dl>{review.exception === 'open' && <p className="mt-3 border-t pt-3 text-sm text-primary">Drafted PDS approval held until discrepancies and required reviews are resolved.</p>}</section>}
- </aside></div></div>
+type Props = {
+  review?: Review; claim: Claim; user: User; ready: boolean
+  initiate: (type: ReviewType) => void; act: (action: Action, comment: string) => void
+  save: (records: EvidenceRecord[], checks: DisclosureChecks) => void; edit: (patch: DraftPatch) => void
+}
+
+export function DisclosureReview({ review, claim, user, initiate, act, ready, save, edit }: Props) {
+  const [type, setType] = useState<ReviewType>('routine')
+  const [comment, setComment] = useState('')
+  const [evidenceDirty, setEvidenceDirty] = useState(false)
+  const [error, setError] = useState('')
+  const editable = ready && !!review && canEditDraft(review, user)
+  const evidenceEditable = ready && !!review && canEditEvidence(review, user)
+  const canAct = ready && !!review && actionBlocker(review, user) === null
+  const canStart = user.role === 'Product Management' && (!review || review.stage === 'approved')
+  const reviewing = !!review && !['draft', 'approved'].includes(review.stage)
+  const blockers = review?.stage === 'draft' ? submissionBlockers(review) : []
+  const acceptBlocker = reviewing ? decisionBlocker(review, 'accept', user, comment.trim() || 'Preview decision') : null
+  const lastReturn = review?.events.findLast(event => event.to === 'draft' && event.from !== 'draft')
+  const field = 'rounded border bg-card px-3 py-2 text-sm disabled:opacity-70'
+
+  function submit(action: Action) {
+    if (!review || !ready) return
+    const blocked = decisionBlocker(review, action, user, comment)
+    if (blocked || (action === 'accept' && evidenceDirty)) {
+      setError(blocked ?? 'Save your evidence changes before accepting.'); return
+    }
+    act(action, comment)
+    if (action !== 'verify') setComment('')
+    setError('')
+  }
+
+  return <div className="flex flex-col gap-4">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div><h2 className="text-xl font-semibold">ESG screening disclosure</h2><p className="mt-1 text-sm text-muted-foreground">PDS-001 · Newly drafted PDS{review ? ` · ${review.id}` : ''}</p></div>
+      <StatusBadge stage={review?.stage} />
+    </div>
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,1fr)]">
+      <div className="flex min-w-0 flex-col gap-4">
+        <section className="panel">
+          <div className="border-b p-4"><p className="eyebrow">Fund</p><h3 className="mt-2 font-semibold">{fund}</h3></div>
+          <div className="p-4">
+            <h3 className="text-sm font-semibold">Current disclosure wording</h3>
+            <blockquote className="mt-3 text-base leading-relaxed">&ldquo;{claims[claim]}&rdquo;</blockquote>
+            <p className="mt-2 text-xs text-muted-foreground">{claim === 'all' ? 'Illustrative draft claim for this prototype, not verbatim historical Vanguard wording.' : 'Predefined illustrative amendment applied by Product Management, not verbatim Vanguard wording.'}</p>
+          </div>
+          {review?.report && <div className="flex flex-col gap-3 border-t p-4"><CheckResults report={review.report} /><p className="text-xs text-muted-foreground">Checks one illustrative security (GOV-001) under simplified rules. Product Strategy must review the result and record its verification decision.</p></div>}
+          {review && <EvidenceEditor key={`${review.id}-${evidenceEditable}`} records={review.evidence} preparedRecords={review.report?.snapshot} checks={review.disclosureChecks} editable={evidenceEditable} confirmed={evidenceConfirmed(review)} save={save} onDirtyChange={setEvidenceDirty} />}
+        </section>
+      </div>
+      <aside className="flex flex-col gap-4">
+        <section className="panel">
+          <div className="border-b p-4"><h3 className="font-semibold">{user.role === 'Internal Audit' ? 'Independent assurance' : 'Your actions'}</h3><p className="mt-1 text-sm text-muted-foreground">{user.role}</p></div>
+          <div className="flex flex-col gap-3 p-4" aria-live="polite">
+            {review && review.stage !== 'draft' && <p className="flex items-center gap-2 rounded border bg-background p-3 text-sm"><LockKeyhole className="size-4 shrink-0" />{review.stage === 'disclosure' ? 'Assessment content is locked. Disclosure Team can complete supporting evidence and wording checks.' : 'Assessment content and supporting evidence are locked.'}</p>}
+            {user.role === 'Internal Audit' ? <p className="text-sm leading-relaxed">Internal Audit works alongside this process through separate assurance activities. Inspect evidence and decisions in Review History. Participating in management approvals would compromise its independence when auditing those decisions.</p>
+              : canStart ? <>
+                <p className="text-sm text-muted-foreground">Create a Draft, complete the disclosure details, then send it to Disclosure Team to prepare supporting evidence and check the wording.</p>
+                <label className="flex flex-col gap-2 text-sm">Review type<select className={field} value={type} onChange={e => setType(e.target.value as ReviewType)}><option value="routine">Routine Review · new PDS</option><option value="trigger">Trigger-Event Review · new concern</option></select></label>
+                <Button disabled={!ready} onClick={() => initiate(type)}>Create Draft</Button>
+              </> : review?.stage === 'approved' ? <p className="text-sm text-muted-foreground">Assessment approved by Risk / Compliance. No further approval action is required.</p>
+              : canAct && review ? <>
+                <p className="text-sm leading-relaxed">{task(review)}</p>
+                {review.stage === 'verify' && <>
+                  <p className="text-sm leading-relaxed text-muted-foreground">Compares the PDS claim against the prepared Bloomberg and MSCI records for GOV-001. An included security that is not screened contradicts a claim that all securities are screened. This checks one illustrative security under simplified rules and does not establish full regulatory compliance.</p>
+                  <Button disabled={!ready} onClick={() => submit('verify')}>Run Verification</Button>
+                  {review.report && <p className="text-sm font-medium">Review the verification result alongside the proposed wording before recording your decision.</p>}
+                </>}
+                {editable && <>
+                  <label className="flex flex-col gap-2 text-sm">Review type (required)<select className={field} value={review.type} onChange={e => edit({ type: e.target.value as ReviewType })}><option value="routine">Routine Review</option><option value="trigger">Trigger-Event Review</option></select></label>
+                </>}
+                {editable && lastReturn && <div className="rounded border border-primary p-3 text-sm"><p className="font-semibold">Returned by {lastReturn.role}</p><p className="mt-1 whitespace-pre-wrap">{lastReturn.comment}</p></div>}
+                {editable && lastReturn && review.claim === 'all' && <>
+                  <p className="text-sm font-medium">Predefined proposed amendment</p>
+                  <blockquote className="border bg-background p-3 text-sm leading-relaxed">&ldquo;{claims.qualified}&rdquo;</blockquote>
+                  <Button variant="outline" onClick={() => edit({ claim: 'qualified' })}>Apply predefined amendment</Button>
+                </>}
+                <label className="flex flex-col gap-2 text-sm font-medium">Comments (required)<textarea required className="min-h-24 rounded border bg-card px-3 py-2 font-normal" value={comment} onChange={e => { setComment(e.target.value); setError('') }} placeholder={editable ? 'Explain the assessment and readiness for review' : 'Record your verification, endorsement, approval or return rationale'} /></label>
+                <p className="text-xs text-muted-foreground">A comment is required for every decision. You cannot review or approve your own submission.</p>
+                {editable ? <>
+                  <Button disabled={!ready || !comment.trim() || blockers.length > 0} onClick={() => submit('submit')}>Send to Disclosure Team</Button>
+                  {blockers.length > 0 && <div role="status" className="rounded border bg-background p-3 text-sm"><p className="font-medium">Complete before submission</p><ul className="mt-2 list-disc space-y-1 pl-4">{blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul></div>}
+                </> : <>
+                  <div className="flex flex-wrap gap-2"><Button variant="success" disabled={!ready || !comment.trim() || !!acceptBlocker || evidenceDirty} onClick={() => submit('accept')}><Check />Accept</Button><Button variant="destructive" disabled={!ready || !comment.trim()} onClick={() => submit('reject')}><X />Reject</Button></div>
+                  {evidenceDirty && <p className="text-sm text-muted-foreground">Save the supporting evidence before accepting.</p>}
+                  {acceptBlocker && <p role="status" className="text-sm text-primary">{acceptBlocker}</p>}
+                  <p className="text-xs text-muted-foreground">Reject returns the assessment to Product Management as Draft. Resubmission restarts verification and all subsequent reviews.{review.stage === 'risk' ? ' Accept marks the assessment Approved.' : ''}</p>
+                </>}
+              </> : <div className="flex flex-col gap-3 rounded border bg-background p-3 text-sm">
+                <dl className="flex flex-col gap-2"><div><dt className="text-muted-foreground">Current action owner</dt><dd className="mt-1 font-medium">{owner(review) ?? 'Complete'}</dd></div><div><dt className="text-muted-foreground">Status</dt><dd className="mt-1"><StatusBadge stage={review?.stage} /></dd></div></dl>
+                <p className="text-muted-foreground">{review ? actionBlocker(review, user) : 'Only Product Management can create and edit a Draft.'}</p>
+              </div>}
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          </div>
+        </section>
+        <section className="panel p-4">
+          <h3 className="font-semibold">Assessment workflow</h3>
+          <ol className="mt-3 flex flex-col gap-3">{workflow.map((step, index) => {
+            const currentIndex = workflow.findIndex(item => item.stage === (review?.stage ?? 'draft'))
+            const current = index === currentIndex
+            return <li key={step.stage} aria-current={current ? 'step' : undefined} className="flex items-start gap-3"><span className={`step-number ${current ? 'active' : index < currentIndex ? 'complete' : ''}`}>{index < currentIndex ? <Check className="size-4" /> : index + 1}</span><div className="min-w-0 text-sm"><StatusBadge stage={step.stage} /><p className="mt-1 text-muted-foreground">{step.role ?? 'Review complete'}</p></div></li>
+          })}</ol>
+          <p className="mt-4 border-t pt-3 text-xs leading-relaxed text-muted-foreground">Internal Audit (LOD 3) provides separate, independent assurance outside this approval chain.</p>
+        </section>
+      </aside>
+    </div>
+  </div>
 }
