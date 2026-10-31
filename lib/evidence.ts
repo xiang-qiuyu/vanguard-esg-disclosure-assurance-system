@@ -4,10 +4,13 @@ export type Finding = { kind: 'Unscreened security'; security: string; name: str
 export type CheckReport = { findings: Finding[]; blockers: string[]; snapshot: EvidenceRecord[] }
 
 export function validateEvidence(records: EvidenceRecord[]): string | null {
+ if (!Array.isArray(records) || records.some(r => !r || !['Bloomberg', 'MSCI'].includes(r.source))) return 'Provide valid Bloomberg and MSCI evidence records.'
  const bloomberg = records.filter(r => r.source === 'Bloomberg'), msci = records.filter(r => r.source === 'MSCI')
  if (bloomberg.length !== 1 || msci.length !== 1) return 'Save one Bloomberg index constituent record and one MSCI screening record.'
+ if (records.some(r => !r.id?.trim()) || new Set(records.map(r => r.id)).size !== records.length) return 'Each evidence record requires a unique source reference.'
  if (records.some(r => !r.security?.trim() || !r.note?.trim())) return 'Security ID and source note are required for both records.'
  if (!bloomberg[0].name?.trim()) return 'The Bloomberg record requires a security name.'
+ if (typeof bloomberg[0].included !== 'boolean' || typeof msci[0].researchAvailable !== 'boolean' || !['screened', 'unscreened'].includes(msci[0].result)) return 'Complete fund inclusion, research availability and screening status.'
  if (bloomberg[0].security.trim().toUpperCase() !== msci[0].security.trim().toUpperCase()) return 'The MSCI record must reference the same security ID as the Bloomberg constituent.'
  return null
 }

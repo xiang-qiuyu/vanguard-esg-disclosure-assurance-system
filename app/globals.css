@@ -29,6 +29,8 @@
  .role { @apply text-sm text-muted-foreground; }
  [data-slot=button] { min-height:38px; padding-inline:14px; }
  [data-slot=badge] { font-size:14px; min-height:25px; }
+ [data-slot=badge].dark\:bg-yellow-950 { background-color:#fef9c3 !important; border-color:#fde68a !important; color:#713f12 !important; }
+ [data-slot=badge].dark\:bg-blue-950 { background-color:#dbeafe !important; border-color:#93c5fd !important; color:#1e3a8a !important; }
  [data-slot=alert] { padding:16px; }
  .main-tabs [data-slot=tabs-list] { height:54px; }
  .main-tabs [data-slot=tabs-trigger] { padding-inline:20px; gap:9px; }
