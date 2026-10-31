@@ -1,32 +1,28 @@
-# vanguard-esg-disclosure-assurance-system
+# ESG Disclosure Assurance System
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
+A Vanguard-inspired academic prototype built with Next.js, React and TypeScript. It demonstrates ESG disclosure review, automated discrepancy checks and decision history using illustrative evidence and simulated roles.
 
-## Built with v0
+## Run locally
 
-This repository is linked to a [v0](https://v0.app) project. You can continue developing by visiting the link below -- start new chats to make changes, and v0 will push commits directly to this repo. Every merge to `main` will automatically deploy.
-
-[Continue working on v0 →](https://v0.app/chat/projects/prj_4OoH6yi0qpShm1cxY22CvnPIcYWD)
-
-## Getting Started
-
-First, run the development server:
+Install the dependencies and start the development server:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-## Assessment workflow
+For a production build:
 
-Product Management creates and edits the assessment Draft, then sends it to Disclosure Team with a comment. Disclosure Team prepares the supporting Bloomberg and MSCI evidence and checks proposed wording consistency across the PDS, website and marketing material. In this prototype it fills the Supporting evidence form and records a short check for each material. Complete evidence and all three wording checks are required before it can Accept and send the assessment to Product Strategy.
+```bash
+npm run build
+npm start
+```
 
-Product Strategy then verifies screening methodology, issuer coverage, exclusions and limitations. It uses Run Verification against the evidence prepared by Disclosure Team, reviews the discrepancy result, then Accepts or Rejects with a comment. A passing result sends the assessment directly to Risk / Compliance for final review. The tool checks one illustrative security under simplified rules; broader technical review is recorded in the decision comment. Assessment content remains locked after submission; only Disclosure Team can edit supporting evidence at its review stage. Reviews route automatically to the responsible role at each stage:
+## Review workflow
+
+**Product Management → Disclosure Team → Product Strategy → Risk / Compliance → Approved**
 
 | Status | Current action owner |
 | --- | --- |
@@ -36,24 +32,44 @@ Product Strategy then verifies screening methodology, issuer coverage, exclusion
 | Pending Risk/Compliance Review | Risk / Compliance Team |
 | Approved | Review complete |
 
-Reject returns the assessment to its Product Management draft owner. Resubmission restarts the entire review sequence. Unresolved evidence discrepancies block acceptance, and submitters cannot review or approve their own submissions. Internal Audit (LOD 3) independently inspects the records through separate assurance activities and has no management approval actions.
+1. **Product Management** creates the Draft and selects **Send to Disclosure Team**. The current disclosure wording is displayed as a read-only quote.
+2. **Disclosure Team** prepares the Bloomberg and MSCI supporting evidence. Under **Disclosure Team Check**, it completes **Product Disclosure Statement Check**, **Website check** and **Marketing material check**, saves the evidence, then accepts or rejects the assessment with a comment.
+3. **Product Strategy** selects **Run Verification**, reviews the discrepancy result, and considers screening methodology, issuer coverage, exclusions and limitations. A passing result and a decision comment are required to accept and send the assessment to Risk / Compliance.
+4. **Risk / Compliance Team** performs the final review. Accept marks the assessment **Approved**; Reject returns it to Product Management as **Draft**.
 
-The evidence form includes Disclosure Team Check with Product Disclosure Statement Check, Website check and Marketing material check. Status badges use grey for Draft, amber for Disclosure Review, blue for Product Strategy Verification, purple for Risk/Compliance Review and green for Approved, consistently across the app.
+Rejecting at any review stage returns the assessment to Draft. Resubmission restarts the sequence, requiring Disclosure Team evidence confirmation and a fresh Product Strategy verification run.
 
-Use the simulated role selector to move through the workflow. No user selection or manual reviewer assignment is needed. Create the Draft as Product Management and use Send to Disclosure Team. Switch to Disclosure Team to fill Supporting evidence, record the three wording checks and Accept. Switch to Product Strategy and use Run Verification, review its result, then Accept or Reject. Current disclosure wording is displayed as a read-only quote. To exercise a discrepancy return, run verification on the initial “all securities” wording, reject it as Product Strategy, and use Apply predefined amendment under Your actions as Product Management before resubmitting. Every resubmission returns to Disclosure Team first, then requires a fresh Product Strategy verification run.
+**Internal Audit** provides separate independent assurance through the read-only Review History. It does not participate in management approvals.
 
-Decision history shows the acting role, comment, assessment details and evidence snapshots. Saved assessments at the removed approval stage move directly to Risk / Compliance, with earlier history retained. Version 5 active assessments retain their history and prepared evidence but route back to Disclosure Team to follow the new order. Version 4 browser data retains its history but resets to Draft to require the new approval chain.
+## Try the prototype
 
-This remains a browser-local academic prototype with simulated identities and no authentication or server-side authorization. These controls demonstrate workflow behavior; production enforcement requires authenticated identities, server-side permission checks and durable audit records.
+Use the **Simulated role** selector to move between departments. There is no user selector or manual reviewer assignment.
 
-Run `npm test`, `npm run typecheck` and `npm run build` to validate changes.
+The initial claim states that all securities are screened. The illustrative evidence includes GOV-001, which is in the Fund but has no available MSCI research and is not screened. Running verification identifies that discrepancy and blocks acceptance.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Reject the assessment as Product Strategy with a comment. As Product Management, select **Apply predefined amendment** to qualify the screening scope, then send it back to Disclosure Team. Reconfirm the evidence and wording checks, accept, and run verification again as Product Strategy. The qualified wording passes the prototype rules and can proceed to Risk / Compliance.
 
-## Learn More
+## Controls and display
 
-To learn more, take a look at the following resources:
+- Only Product Management can edit the assessment Draft. Submitted assessment content is locked.
+- Only Disclosure Team can edit supporting evidence during Disclosure Review. The evidence locks when it moves to Product Strategy.
+- Only the responsible role can act at the current stage. Self-approval is blocked.
+- Comments are required for submission, acceptance and rejection. Required evidence and wording checks must be complete before Disclosure Team can accept.
+- Accept/Approve buttons are green; Reject buttons are red.
+- Status colours are grey for Draft, amber for Disclosure Review, blue for Product Strategy Verification, purple for Risk/Compliance Review and green for Approved.
+- Review History retains decision comments, evidence snapshots and verification results.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [v0 Documentation](https://v0.app/docs) - learn about v0 and how to use it.
+## Available commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the development server |
+| `npm run typecheck` | Check TypeScript types |
+| `npm run build` | Create the production build |
+| `npm start` | Serve the production build |
+
+## Prototype scope
+
+All evidence is illustrative, not live Bloomberg or MSCI data. Verification checks one example security under simplified rules and does not establish full regulatory compliance. Website and marketing checks are recorded as simulated review notes.
+
+Data is saved only in this browser. **Reset Demo** clears the local assessments and history. Roles and identities are simulated; the app has no authentication, server-side authorization or tamper-proof audit storage.
