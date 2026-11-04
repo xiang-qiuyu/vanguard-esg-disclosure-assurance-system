@@ -22,22 +22,22 @@ npm start
 
 ## Review workflow
 
-**Product Management → Disclosure Team → Product Strategy → Risk / Compliance → Approved**
+**Product Management → Product Strategy (LOD 1) → Disclosure Team + Risk / Compliance monitoring (LOD 2) → Approved**
 
 | Status | Current action owner |
 | --- | --- |
 | Draft | Product Management |
-| Pending Disclosure Review | Disclosure Team |
 | Pending Product Strategy Verification | Product Strategy |
-| Pending Risk/Compliance Review | Risk / Compliance Team |
+| Pending Disclosure Team Monitoring | Disclosure Team |
+| Pending Risk/Compliance Monitoring | Risk / Compliance Team |
 | Approved | Review complete |
 
-1. **Product Management** creates the Draft and selects **Send to Disclosure Team**. The current disclosure wording is displayed as a read-only quote.
-2. **Disclosure Team** prepares the Bloomberg and MSCI supporting evidence. Under **Disclosure Team Check**, it completes **Product Disclosure Statement Check**, **Website check** and **Marketing material check**, saves the evidence, then accepts or rejects the assessment with a comment.
-3. **Product Strategy** selects **Run Verification**, reviews the discrepancy result, and considers screening methodology, issuer coverage, exclusions and limitations. A passing result and a decision comment are required to accept and send the assessment to Risk / Compliance.
-4. **Risk / Compliance Team** performs the final review. Accept marks the assessment **Approved**; Reject returns it to Product Management as **Draft**.
+1. **Product Management** creates the Draft and sends it to **Product Strategy**.
+2. **Product Strategy** performs the First Line of Defence review and accepts or rejects the proposed disclosure.
+3. **Disclosure Team** performs Second Line monitoring by preparing supporting evidence and checking wording consistency across the PDS, website and marketing material.
+4. **Risk / Compliance Team** performs Second Line monitoring and accepts the assessment as **Approved**; Reject returns it to Product Management as **Draft**.
 
-Rejecting at any review stage returns the assessment to Draft. Resubmission restarts the sequence, requiring Disclosure Team evidence confirmation and a fresh Product Strategy verification run.
+Rejecting at any review stage returns the assessment to Draft. Resubmission restarts the sequence, requiring fresh Product Strategy, Disclosure Team and Risk / Compliance reviews.
 
 **Internal Audit** provides separate independent assurance through the read-only Review History. It does not participate in management approvals.
 
