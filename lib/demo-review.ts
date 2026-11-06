@@ -1,6 +1,6 @@
-import { illustrativeEvidence } from './evidence'
 import { storePds, type PdsFile } from './pds'
-import { attachPds, createReview, exampleWording, getUser, saveDraft, saveEvidence, transition, type Review } from './review'
+import { storeEvidenceFile, type EvidenceFile } from './evidence-file'
+import { attachPds, attachEvidenceFile, createReview, exampleWording, getUser, saveDraft, transition, type Review } from './review'
 
 export const overdueExampleId = 'PDS-002'
 
@@ -16,13 +16,13 @@ export function overdueExamplePdf(): string {
   return pdf
 }
 
-export function createOverdueReview(pds: PdsFile): Review {
-  const pm = getUser('pm-alex')!, strategy = getUser('strategy-maya')!
+export function createOverdueReview(pds: PdsFile, evidenceFile: EvidenceFile): Review {
+  const pm = getUser('pm-alex')!
   let review = createReview(overdueExampleId, 'example', pm)!
   review = attachPds(review, { ...pds, uploadedAt: '2026-11-02T01:00:00Z' }, pm)
+  review = attachEvidenceFile(review, { ...evidenceFile, uploadedAt: '2026-11-02T01:02:00Z' }, pm)
   review = saveDraft(review, { targetDate: '2026-11-05' }, pm)
   review = transition(review, 'submit', pm, 'PDS submitted for specialist screening methodology and issuer coverage checks.')
-  review = saveEvidence(review, illustrativeEvidence(), strategy)
   const extraction = { ...review.extraction!, at: '2026-11-02T01:00:00Z' }
   return { ...review, extraction, events: [
     ...review.events.map((event, index) => ({ ...event, at: `2026-11-02T01:0${index}:00Z`, ...(event.snapshot?.extraction ? { snapshot: { ...event.snapshot, extraction: { ...extraction } } } : {}) })),
@@ -33,5 +33,6 @@ export function createOverdueReview(pds: PdsFile): Review {
 export async function ensureOverdueExample(reviews: Review[]): Promise<Review[]> {
   if (reviews.some(review => review.id === overdueExampleId)) return reviews
   const pds = await storePds(new File([overdueExamplePdf()], 'overdue-verification-example.pdf', { type: 'application/pdf' }), 'pm-alex')
-  return [createOverdueReview(pds), ...reviews]
+  const evidenceFile = await storeEvidenceFile(new File(['Source,Security,Status\nBloomberg,CORP-001,Included\nMSCI,CORP-001,Not screened\n'], 'overdue-screening-evidence.csv', { type: 'text/csv' }), 'pm-alex')
+  return [createOverdueReview(pds, evidenceFile), ...reviews]
 }

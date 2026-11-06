@@ -1,11 +1,12 @@
-import { verificationResult, type EvidenceRecord, type CheckReport } from './evidence'
+import { illustrativeEvidence, verificationResult, type EvidenceRecord, type CheckReport } from './evidence'
 import { claims, defaultAssignments, workflow, decisionStages, getUser, type Entry, type Review, type Snapshot } from './review'
 import { validPdsMetadata } from './pds'
 import { validTargetDate } from './timing'
 import { validConcern } from './monitoring'
+import { validEvidenceFile } from './evidence-file'
 
 export const storageKey = 'esg-assurance-demo-v1'
-export const storageVersion = 14
+export const storageVersion = 17
 
 function object(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -17,7 +18,7 @@ function evidence(value: unknown): value is EvidenceRecord[] {
 }
 function report(value: unknown): value is CheckReport {
   return object(value) && evidence(value.snapshot) && Array.isArray(value.blockers) && value.blockers.every(b => typeof b === 'string') &&
-    Array.isArray(value.findings) && value.findings.every(f => object(f) && typeof f.kind === 'string' && typeof f.security === 'string' && typeof f.name === 'string' && typeof f.detail === 'string' && Array.isArray(f.evidenceIds) && f.evidenceIds.every(id => typeof id === 'string'))
+    Array.isArray(value.findings) && value.findings.every(f => object(f) && typeof f.kind === 'string' && typeof f.security === 'string' && typeof f.name === 'string' && typeof f.detail === 'string' && (f.severity === undefined || ['review-required', 'blocking'].includes(String(f.severity))) && Array.isArray(f.evidenceIds) && f.evidenceIds.every(id => typeof id === 'string'))
 }
 function assignments(value: unknown) {
   return object(value) && decisionStages.every(stage => typeof value[stage] === 'string' && !!getUser(value[stage] as string))
@@ -29,7 +30,9 @@ function disclosureChecks(value: unknown) {
   return value === undefined || (object(value) && ['pds', 'website', 'marketing'].every(key => typeof value[key] === 'string'))
 }
 function documentAndDate(value: Record<string, unknown>) {
-  return (value.pds === undefined || (validPdsMetadata(value.pds) && getUser(value.pds.uploadedBy)?.role === 'Product Management'))
+  return (value.wording === undefined || (typeof value.wording === 'string' && !!value.wording.trim() && value.wording.length <= 10000))
+    && (value.evidenceFile === undefined || (validEvidenceFile(value.evidenceFile) && ['Product Management', 'Product Strategy'].includes(getUser(value.evidenceFile.uploadedBy)?.role ?? '')))
+    && (value.pds === undefined || (validPdsMetadata(value.pds) && getUser(value.pds.uploadedBy)?.role === 'Product Management'))
     && (value.targetDate === undefined || value.targetDate === '' || validTargetDate(value.targetDate))
     && (value.extraction === undefined || (object(value.extraction) && validPdsMetadata(value.pds) && value.extraction.pdsId === value.pds.id
       && value.extraction.method === 'simulated' && typeof value.extraction.at === 'string' && !Number.isNaN(Date.parse(value.extraction.at))))
@@ -67,7 +70,7 @@ function currentReview(value: unknown): value is Review {
 function restoreSavedReviews(raw: string): Review[] {
   const data: unknown = JSON.parse(raw)
   if (!object(data) || !Array.isArray(data.reviews)) throw new Error('Invalid saved assessments')
-  if ([storageVersion, 13, 12, 11, 10, 9, 8, 7, 6, 5].includes(data.version as number)) {
+  if ([storageVersion, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5].includes(data.version as number)) {
     const restored = data.version === storageVersion ? data.reviews : data.reviews.map(value => {
       if (!object(value)) throw new Error('Invalid saved assessment')
       const { functionalGroup: removedGroup, assignments: previousAssignments, ...record } = value
@@ -78,7 +81,7 @@ function restoreSavedReviews(raw: string): Review[] {
         events: [...record.events, { at: new Date().toISOString(), role: 'System', text: 'Assessment routed directly to Risk / Compliance under the simplified approval workflow. Previous history retained.' }] }
     })
     if (!restored.every(currentReview) || new Set(restored.map(r => r.id)).size !== restored.length) throw new Error('Invalid saved assessments')
-    if ([storageVersion, 13, 12, 11, 10, 9].includes(data.version as number)) return restored
+    if ([storageVersion, 16, 15, 14, 13, 12, 11, 10, 9].includes(data.version as number)) return restored
     if (data.version === 8) return restored.map(r => {
       const extraction = r.extraction ?? (r.pds ? { pdsId: r.pds.id, at: r.pds.uploadedAt, method: 'simulated' as const } : undefined)
       const result = r.report ? verificationResult(r.report) : r.result
@@ -109,9 +112,46 @@ function removeLegacyFields(review: Review): Review {
   }) }
 }
 
+function updateIllustrativeBond(review: Review): Review {
+  if (!['draft', 'verify'].includes(review.stage) || review.evidence.length !== 2) return review
+  const previousExample = illustrativeEvidence().map(record => ({ ...record, security: 'GOV-001', researchAvailable: false,
+    name: record.source === 'Bloomberg' ? 'Illustrative Government Bond' : '',
+    note: record.source === 'Bloomberg' ? 'Simulated Bloomberg index constituent record: security is included in the Fund.' : 'Simulated MSCI screening record: no ESG research available for this security.',
+  }))
+  const unchangedExample = previousExample.every(example => review.evidence.some(record => Object.entries(example).every(([key, value]) => record[key as keyof EvidenceRecord] === value)))
+  if (!unchangedExample) return review
+  return { ...review, evidence: illustrativeEvidence(), report: undefined, result: null, verificationRunBy: undefined, evidenceConfirmedBy: undefined, disclosureChecks: undefined,
+    events: [...review.events, { at: new Date().toISOString(), role: 'System', text: 'Illustrative scenario updated from government bond GOV-001 to corporate bond CORP-001, whose issuer was not screened. Fresh Product Strategy verification is required. Earlier decisions and evidence snapshots remain in history.' }],
+  }
+}
+
 export function restoreReviews(raw: string): Review[] {
-  const restored = restoreSavedReviews(raw).map(removeLegacyFields)
-  if ([storageVersion, 13, 12, 11, 10].includes(JSON.parse(raw).version)) return restored
+  const version = JSON.parse(raw).version
+  const restored = restoreSavedReviews(raw).map(removeLegacyFields).map(updateIllustrativeBond).map(review => {
+    if (version >= 16) return review
+    const previousWording = 'The index excludes companies that have a specified level of business involvement in fossil fuels, nuclear power, alcohol, tobacco, cannabis, gambling, adult entertainment or weapons. The index provider specifies activities, revenue or ownership thresholds or Industry Classification Benchmark (ICB) Subsector classifications for each business segment that lead to exclusion and these can vary from one business segment to another.'
+    const oldWording = (claim: string) => claim === 'example' ? previousWording : claim === 'exampleQualified' ? `${previousWording} Screening is limited to issuers covered by the relevant research; the exclusion status of securities without available screening research has not been verified.` : undefined
+    const events = review.events.map(event => event.snapshot && event.snapshot.wording === undefined && oldWording(event.snapshot.claim)
+      ? { ...event, snapshot: { ...event.snapshot, wording: oldWording(event.snapshot.claim) } } : event)
+    if (review.wording !== undefined || !oldWording(review.claim)) return { ...review, events }
+    if (review.claim !== 'example' || !['draft', 'verify'].includes(review.stage)) return { ...review, wording: oldWording(review.claim), events }
+    return { ...review, report: undefined, result: null, verificationRunBy: undefined, evidenceConfirmedBy: undefined, disclosureChecks: undefined,
+      events: [...events, { at: new Date().toISOString(), role: 'System', text: 'Example disclosure wording updated: All corporate securities in the Fund are screened against ESG exclusion criteria. Fresh verification is required; earlier wording and decisions remain in history.' }],
+    }
+  }).map(review => {
+    if (version === storageVersion) return review
+    const previousQualified = 'ESG screening applies only to securities covered by the relevant research. Some securities in the Fund are not screened against the exclusion criteria.'
+    const previousCorporateQualified = 'Corporate securities in the Fund are screened only where issuer coverage is available. Some corporate securities have not been screened against ESG exclusion criteria.'
+    const previousWording = (claim: string) => claim === 'qualified' ? previousQualified : version === 16 && claim === 'exampleQualified' ? previousCorporateQualified : undefined
+    const events = review.events.map(event => event.snapshot && event.snapshot.wording === undefined && previousWording(event.snapshot.claim)
+      ? { ...event, snapshot: { ...event.snapshot, wording: previousWording(event.snapshot.claim) } } : event)
+    const wording = review.wording ?? (!['draft', 'verify'].includes(review.stage) ? previousWording(review.claim) : undefined)
+    if (!['draft', 'verify'].includes(review.stage) || !review.report) return { ...review, wording, events }
+    return { ...review, wording, report: undefined, result: null, verificationRunBy: undefined, evidenceConfirmedBy: undefined, disclosureChecks: undefined,
+      events: [...events, { at: new Date().toISOString(), role: 'System', text: 'Prototype verification updated: only disclosure wording beginning with "Some" and without "All" clears the fixed CORP-001 discrepancy. Research availability and screening status do not affect the result. Run Verification again; earlier results remain in history.' }],
+    }
+  })
+  if ([storageVersion, 16, 15, 14, 13, 12, 11, 10].includes(version)) return restored
   return restored.map(review => {
     if (review.stage === 'approved') return review
     const evidence = review.evidence.length ? review.evidence : review.report?.snapshot.map(record => ({ ...record })) ?? []
@@ -119,7 +159,7 @@ export function restoreReviews(raw: string): Review[] {
     if (evidence === review.evidence && !hadLegacyChecks) return review
     return { ...review, evidence, disclosureChecks: undefined, evidenceConfirmedBy: undefined,
       stage: review.stage === 'risk' ? 'disclosure' : review.stage,
-      events: [...review.events, { at: new Date().toISOString(), role: 'System', text: 'Evidence editing is restricted to Product Strategy. Existing verified records retained. Active Disclosure reviews now require Pass, Needs revision or N/A for each disclosure area; earlier notes and decisions remain in history.' }],
+      events: [...review.events, { at: new Date().toISOString(), role: 'System', text: 'Product Management prepares and edits evidence in Draft; Product Strategy edits evidence during verification. Existing verified records retained. Active Disclosure reviews require Pass, Needs revision or N/A for each disclosure area; earlier notes and decisions remain in history.' }],
     }
   })
 }

@@ -14,9 +14,10 @@ import { concernBlocker, flagConcern, addressConcern, responseBlocker, canAddres
 import { Deadline } from '@/components/review-timing'
 import { ensureOverdueExample, overdueExampleId } from '@/lib/demo-review'
 import { type EvidenceRecord } from '@/lib/evidence'
-import { createReview, saveDraft, saveEvidence, attachPds, canEditDraft, decisionBlocker, transition, roles, users, fund, owner, assignee, task, canEditEvidence, actionBlocker, isReturnedForRevision, type Review, type Role, type Action, type DraftPatch, type DisclosureChecks } from '@/lib/review'
+import { createReview, saveDraft, saveWording, saveEvidence, attachEvidenceFile, attachPds, canEditDraft, decisionBlocker, transition, roles, users, fund, owner, assignee, task, canEditEvidence, actionBlocker, isReturnedForRevision, type Review, type Role, type Action, type DraftPatch, type DisclosureChecks } from '@/lib/review'
 import { restoreReviews, storageKey, storageVersion } from '@/lib/review-storage'
 import { storePds, readPds, clearPdsFiles } from '@/lib/pds'
+import { storeEvidenceFile } from '@/lib/evidence-file'
 import { isOverdue, formatTargetDate } from '@/lib/timing'
 import { dashboardMetrics } from '@/lib/dashboard'
 
@@ -91,6 +92,15 @@ export function AssuranceApp() {
   function edit(patch: DraftPatch) {
     if (!ready) return
     setReviews(old => old.map(r => r.id === review?.id ? saveDraft(r, patch, user) : r))
+  }
+  function editWording(text: string) {
+    if (!ready) return
+    setReviews(old => old.map(r => r.id === review?.id ? saveWording(r, text, user) : r))
+  }
+  async function uploadEvidence(file: File) {
+    if (!ready || !review || !canEditEvidence(review, user)) throw new Error('Product Management can upload supporting evidence in Draft; Product Strategy can upload or replace it during verification.')
+    const metadata = await storeEvidenceFile(file, user.id)
+    setReviews(old => old.map(r => r.id === review.id ? attachEvidenceFile(r, metadata, user) : r))
   }
   async function upload(file: File) {
     if (!ready || !review || !canEditDraft(review, user)) throw new Error('Only Product Management can upload a PDS while the assessment is Draft.')
@@ -167,7 +177,7 @@ export function AssuranceApp() {
           <div className="w-full pb-1 sm:w-auto sm:overflow-x-auto"><TabsList variant="line"><TabsTrigger value="dashboard"><LayoutDashboard />Dashboard</TabsTrigger><TabsTrigger value="disclosures"><FileText />Disclosures</TabsTrigger><TabsTrigger value="history"><History />Review History</TabsTrigger><TabsTrigger value="monitoring"><Activity />Ongoing Monitoring</TabsTrigger></TabsList></div>
           <Button size="sm" variant="ghost" disabled={!ready} onClick={() => setResetting(true)}><RotateCcw data-icon="inline-start" />Reset Demo</Button>
         </div>
-        {resetting && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border bg-card p-3"><p className="text-sm">Reset disclosure wording and clear all uploaded PDS files, monitoring concerns and local review history?</p><div className="flex gap-2"><Button variant="outline" onClick={() => setResetting(false)}>Cancel</Button><Button onClick={reset}>Confirm reset</Button></div>{resetError && <p className="w-full text-sm text-destructive">{resetError}</p>}</div>}
+        {resetting && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border bg-card p-3"><p className="text-sm">Reset disclosure wording and clear all uploaded PDS and evidence files, monitoring concerns and local review history?</p><div className="flex gap-2"><Button variant="outline" onClick={() => setResetting(false)}>Cancel</Button><Button onClick={reset}>Confirm reset</Button></div>{resetError && <p className="w-full text-sm text-destructive">{resetError}</p>}</div>}
         {exampleError && <p role="alert" className="text-sm text-destructive">{exampleError}</p>}
         {storageError && <p role="alert" className="text-sm text-destructive">Local data could not be read or saved. Changes work in this session only. Reset Demo to clear invalid data.</p>}
         <TabsContent value="dashboard" className="min-w-0 pt-4"><div className="flex min-w-0 flex-col gap-4">
@@ -194,7 +204,7 @@ export function AssuranceApp() {
           </div></section>}
           {role === 'Internal Audit' && <section className="panel p-4"><h3 className="font-semibold">Separate assurance activities</h3><p className="mt-2 text-sm text-muted-foreground">Internal Audit independently examines evidence and management decisions. It does not verify, endorse or approve assessments in the management approval chain.</p><Button className="mt-3" variant="outline" onClick={() => setTab('history')}>Inspect decision history</Button></section>}
         </div></TabsContent>
-        <TabsContent value="disclosures" className="min-w-0 pt-4">{reviews.length > 1 && <label className="mb-4 flex max-w-md flex-col gap-2 text-sm font-medium">Select disclosure<select className="rounded border bg-card px-3 py-2" value={review?.id ?? ''} onChange={event => setDisclosureId(event.target.value)}><option value="" disabled>Choose a disclosure</option>{reviews.map(record => <option key={record.id} value={record.id}>{record.id} &middot; {owner(record) ?? 'Approved'}</option>)}</select></label>}<DisclosureReview key={`${review?.id}-${review?.stage}-${user.id}`} review={review} claim={claim} user={user} initiate={initiate} act={act} ready={ready} save={save} edit={edit} now={now} upload={upload} removePds={removePds} /></TabsContent>
+        <TabsContent value="disclosures" className="min-w-0 pt-4">{reviews.length > 1 && <label className="mb-4 flex max-w-md flex-col gap-2 text-sm font-medium">Select disclosure<select className="rounded border bg-card px-3 py-2" value={review?.id ?? ''} onChange={event => setDisclosureId(event.target.value)}><option value="" disabled>Choose a disclosure</option>{reviews.map(record => <option key={record.id} value={record.id}>{record.id} &middot; {owner(record) ?? 'Approved'}</option>)}</select></label>}<DisclosureReview key={`${review?.id}-${review?.stage}-${user.id}`} review={review} claim={claim} user={user} initiate={initiate} act={act} ready={ready} save={save} edit={edit} now={now} upload={upload} uploadEvidence={uploadEvidence} editWording={editWording} removePds={removePds} /></TabsContent>
         <TabsContent value="monitoring" className="min-w-0 pt-4"><OngoingMonitoring reviews={reviews} selected={monitoringId} select={setMonitoringId} ready={ready} user={user} flag={raiseConcern} address={respondToConcern} /></TabsContent>
         <TabsContent value="history" className="min-w-0 pt-4"><ReviewHistory reviews={reviews} selected={selected} select={setSelected} now={now} /></TabsContent>
       </Tabs>

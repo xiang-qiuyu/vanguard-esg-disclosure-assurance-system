@@ -27,12 +27,15 @@ async function withStore<T>(mode: IDBTransactionMode, work: (store: IDBObjectSto
     transaction.onerror = transaction.onabort = () => { db.close(); reject(new Error('The PDS file could not be stored or read. Check browser storage and try again.')) }
   })
 }
+export async function storeFileBlob(id: string, file: Blob): Promise<void> {
+  await withStore('readwrite', store => store.put(file, id))
+}
 export async function storePds(file: File, uploadedBy: string): Promise<PdsFile> {
   if (!/\.pdf$/i.test(file.name) || (file.type && file.type !== 'application/pdf')) throw new Error('Choose a PDF file.')
   if (file.size <= 5 || file.size > maxPdsBytes) throw new Error('Choose a PDF file up to 10 MB.')
   if (await file.slice(0, 5).text() !== '%PDF-') throw new Error('This file does not appear to be a PDF. Choose a valid PDS PDF.')
   const metadata: PdsFile = { id: crypto.randomUUID(), name: file.name, size: file.size, type: 'application/pdf', uploadedAt: new Date().toISOString(), uploadedBy }
-  await withStore('readwrite', store => store.put(file.slice(0, file.size, 'application/pdf'), metadata.id))
+  await storeFileBlob(metadata.id, file.slice(0, file.size, 'application/pdf'))
   return metadata
 }
 export async function readPds(id: string): Promise<Blob | undefined> {

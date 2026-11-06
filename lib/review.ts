@@ -1,22 +1,23 @@
-import { crossCheck, illustrativeEvidence, validateEvidence, verificationResult, type VerificationResult, type EvidenceRecord, type CheckReport } from './evidence'
+import { corporateDisclosureWording, someDisclosureWording, crossCheck, illustrativeEvidence, validateEvidence, verificationResult, type VerificationResult, type EvidenceRecord, type CheckReport } from './evidence'
 import { validPdsMetadata, type PdsFile } from './pds'
 import { validTargetDate } from './timing'
 import { type Concern } from './monitoring'
+import { validEvidenceFile, type EvidenceFile } from './evidence-file'
 
-export const exampleWording = 'The index excludes companies that have a specified level of business involvement in fossil fuels, nuclear power, alcohol, tobacco, cannabis, gambling, adult entertainment or weapons. The index provider specifies activities, revenue or ownership thresholds or Industry Classification Benchmark (ICB) Subsector classifications for each business segment that lead to exclusion and these can vary from one business segment to another.'
+export const exampleWording = corporateDisclosureWording
 
 export const claims = {
   all: 'All securities in the Fund are screened against ESG exclusion criteria.',
-  qualified: 'ESG screening applies only to securities covered by the relevant research. Some securities in the Fund are not screened against the exclusion criteria.',
+  qualified: someDisclosureWording,
   example: exampleWording,
-  exampleQualified: `${exampleWording} Screening is limited to issuers covered by the relevant research; the exclusion status of securities without available screening research has not been verified.`,
+  exampleQualified: someDisclosureWording,
 } as const
 export const fund = 'Vanguard Ethically Conscious Global Aggregate Bond Index Fund'
 export const roles = ['Product Management', 'Product Strategy', 'Disclosure Team', 'Risk / Compliance Team', 'Internal Audit'] as const
 export type Role = typeof roles[number]
 export const evidencePermissions: Record<Role, string> = {
-  'Product Management': 'View only; responsible for uploading and maintaining the PDS.',
-  'Product Strategy': 'View, edit and validate Bloomberg/MSCI screening evidence during Product Strategy verification.',
+  'Product Management': 'Upload and edit supporting screening evidence in Draft before sending it to Product Strategy; maintain the PDS.',
+  'Product Strategy': 'Upload, edit and validate Bloomberg/MSCI screening evidence during Product Strategy verification.',
   'Disclosure Team': 'View evidence, complete the disclosure checklist and record review comments before approving or rejecting.',
   'Risk / Compliance Team': 'View evidence; complete final approval or rejection and flag monitoring concerns on approved disclosures.',
   'Internal Audit': 'View only for separate, independent assurance.',
@@ -53,13 +54,13 @@ export function validDisclosureChecks(checks?: DisclosureChecks): boolean {
   return !!checks && disclosureAreas.every(({ key }) => Object.hasOwn(disclosureOutcomes, checks[key]))
 }
 export type PdsExtraction = { pdsId: string; at: string; method: 'simulated' }
-export type Snapshot = { claim: Claim; assignments: Assignments; evidence: EvidenceRecord[]; evidenceConfirmedBy?: string; disclosureChecks?: DisclosureChecks; pds?: PdsFile; extraction?: PdsExtraction; targetDate?: string }
+export type Snapshot = { claim: Claim; wording?: string; evidenceFile?: EvidenceFile; assignments: Assignments; evidence: EvidenceRecord[]; evidenceConfirmedBy?: string; disclosureChecks?: DisclosureChecks; pds?: PdsFile; extraction?: PdsExtraction; targetDate?: string }
 export type Entry = {
   at: string; role: string; text: string; userId?: string; userName?: string; comment?: string
   from?: Stage; to?: Stage; evidence?: EvidenceRecord[]; report?: CheckReport; snapshot?: Snapshot; kind?: 'timing-risk' | 'monitoring-concern' | 'concern-addressed'; concern?: Concern
 }
 export type Review = {
-  id: string; claim: Claim; original: Claim
+  id: string; claim: Claim; original: Claim; wording?: string; evidenceFile?: EvidenceFile
   stage: Stage; draftOwnerId: string; submittedBy: string | null; pds?: PdsFile; extraction?: PdsExtraction; targetDate?: string
   assignments: Assignments; result: VerificationResult | null
   risk: 'pending' | 'action-required' | 'resolved' | null; events: Entry[]; evidence: EvidenceRecord[]; evidenceConfirmedBy?: string; disclosureChecks?: DisclosureChecks; verificationRunBy?: string; report?: CheckReport; concerns?: Concern[]
@@ -104,10 +105,24 @@ export function canEditDraft(review: Review, actor: User): boolean {
   return review.stage === 'draft' && actionBlocker(review, actor) === null
 }
 export function canEditEvidence(review: Review, actor: User): boolean {
-  return review.stage === 'verify' && !!review.pds && review.extraction?.pdsId === review.pds.id && actionBlocker(review, actor) === null
+  return ['draft', 'verify'].includes(review.stage) && !!review.pds && review.extraction?.pdsId === review.pds.id && actionBlocker(review, actor) === null
 }
 export function canReviewDisclosure(review: Review, actor: User): boolean {
   return review.stage === 'disclosure' && actionBlocker(review, actor) === null
+}
+export function canEditWording(review: Review, actor: User): boolean {
+  return !!review.pds && review.extraction?.pdsId === review.pds.id
+    && (canEditDraft(review, actor) || canEditEvidence(review, actor))
+}
+export function disclosureWording(review: Pick<Review, 'claim' | 'wording'>): string {
+  return review.wording ?? claims[review.claim]
+}
+export function saveWording(review: Review, wording: string, actor: User): Review {
+  const text = wording.trim()
+  if (!canEditWording(review, actor) || !text || text.length > 10000 || text === disclosureWording(review)) return review
+  const updated: Review = { ...review, wording: text, result: null, report: undefined,
+    verificationRunBy: undefined, evidenceConfirmedBy: undefined, disclosureChecks: undefined }
+  return { ...updated, events: [...review.events, entry(actor, 'Disclosure wording edited. Previous verification invalidated; fresh verification required.', { snapshot: snapshot(updated) })] }
 }
 export function evidenceConfirmed(review: Review): boolean {
   return !!review.evidenceConfirmedBy && getUser(review.evidenceConfirmedBy)?.role === 'Disclosure Team'
@@ -115,7 +130,7 @@ export function evidenceConfirmed(review: Review): boolean {
     && validDisclosureChecks(review.disclosureChecks) && !Object.values(review.disclosureChecks!).includes('needs-revision')
 }
 function snapshot(review: Review): Snapshot {
-  return { claim: review.claim, assignments: { ...review.assignments }, evidence: review.evidence.map(record => ({ ...record })), ...(review.evidenceConfirmedBy ? { evidenceConfirmedBy: review.evidenceConfirmedBy } : {}), ...(review.disclosureChecks ? { disclosureChecks: { ...review.disclosureChecks } } : {}), ...(review.pds ? { pds: { ...review.pds } } : {}), ...(review.extraction ? { extraction: { ...review.extraction } } : {}), ...(review.targetDate ? { targetDate: review.targetDate } : {}) }
+  return { claim: review.claim, wording: disclosureWording(review), ...(review.evidenceFile ? { evidenceFile: { ...review.evidenceFile } } : {}), assignments: { ...review.assignments }, evidence: review.evidence.map(record => ({ ...record })), ...(review.evidenceConfirmedBy ? { evidenceConfirmedBy: review.evidenceConfirmedBy } : {}), ...(review.disclosureChecks ? { disclosureChecks: { ...review.disclosureChecks } } : {}), ...(review.pds ? { pds: { ...review.pds } } : {}), ...(review.extraction ? { extraction: { ...review.extraction } } : {}), ...(review.targetDate ? { targetDate: review.targetDate } : {}) }
 }
 function entry(actor: User, text: string, extra: Partial<Entry> = {}): Entry {
   const user = identity(actor)!
@@ -138,22 +153,28 @@ export function saveDraft(review: Review, patch: DraftPatch, actor: User): Revie
   if (patch.targetDate !== undefined && patch.targetDate !== '' && !validTargetDate(patch.targetDate)) return review
   const assignments = { ...(patch.assignments ?? review.assignments) }
   const next: Review = { ...review, claim: patch.claim ?? review.claim,
-    assignments, targetDate: patch.targetDate ?? review.targetDate, result: null, report: undefined, verificationRunBy: undefined }
+    wording: patch.claim !== undefined ? undefined : review.wording, assignments, targetDate: patch.targetDate ?? review.targetDate, result: null, report: undefined, verificationRunBy: undefined }
   return { ...next, events: [...review.events, entry(actor, 'Draft assessment details updated. Previous verification invalidated.', { snapshot: snapshot(next) })] }
 }
 export function attachPds(review: Review, pds: PdsFile | undefined, actor: User): Review {
   if (!canEditDraft(review, actor) || (pds && (!validPdsMetadata(pds) || pds.uploadedBy !== actor.id))) return review
   const updated: Review = { ...review, pds: pds ? { ...pds } : undefined,
     extraction: pds ? { pdsId: pds.id, at: new Date().toISOString(), method: 'simulated' } : undefined,
-    claim: pds ? 'example' : review.claim, original: pds ? 'example' : review.original,
+    wording: undefined, claim: pds ? 'example' : review.claim, original: pds ? 'example' : review.original,
     report: undefined, result: null, verificationRunBy: undefined, evidenceConfirmedBy: undefined }
   return { ...updated, events: [...review.events, entry(actor, pds ? `Supporting PDS uploaded: ${pds.name}. Disclosure wording extracted from this file using the supplied example text (simulated extraction).` : 'Supporting PDS and its simulated extraction removed from the current Draft.', { snapshot: snapshot(updated) })] }
+}
+export function attachEvidenceFile(review: Review, file: EvidenceFile, actor: User): Review {
+  if (!canEditEvidence(review, actor) || !validEvidenceFile(file) || file.uploadedBy !== actor.id) return review
+  const next = saveEvidence(review, illustrativeEvidence(), actor)
+  const updated: Review = { ...next, evidenceFile: { ...file } }
+  return { ...updated, events: [...review.events, entry(actor, 'Supporting evidence uploaded: ' + file.name + '. Bloomberg and MSCI example fields populated using simulated extraction. Review the records and Run Verification.', { snapshot: snapshot(updated), evidence: updated.evidence.map(record => ({ ...record })) })] }
 }
 export function saveEvidence(review: Review, records: EvidenceRecord[], actor: User): Review {
   if (!canEditEvidence(review, actor) || validateEvidence(records)) return review
   const evidence = records.map(record => ({ ...record, security: record.security.trim().toUpperCase() }))
   const updated: Review = { ...review, evidence, report: undefined, result: null, verificationRunBy: undefined, evidenceConfirmedBy: undefined, disclosureChecks: undefined }
-  return { ...updated, events: [...review.events, entry(actor, 'Product Strategy updated supporting screening evidence. Previous verification invalidated; Run Verification again before selecting Approve.', { snapshot: snapshot(updated), evidence: evidence.map(record => ({ ...record })) })] }
+  return { ...updated, events: [...review.events, entry(actor, `${actor.role} updated supporting screening evidence. Previous verification invalidated; Product Strategy must Run Verification before selecting Approve.`, { snapshot: snapshot(updated), evidence: evidence.map(record => ({ ...record })) })] }
 }
 function withDisclosureChecks(review: Review, checks: DisclosureChecks, actor: User): Review {
   return { ...review, disclosureChecks: { pds: checks.pds, website: checks.website, marketing: checks.marketing }, evidenceConfirmedBy: actor.id }
@@ -163,6 +184,9 @@ export function submissionBlockers(review: Review): string[] {
   if (!Object.hasOwn(claims, review.claim)) blockers.push('Disclosure wording is required.')
   if (!validPdsMetadata(review.pds)) blockers.push('Upload a supporting PDS PDF before submission.')
   else if (review.extraction?.pdsId !== review.pds!.id) blockers.push('Upload the supporting PDS to simulate disclosure wording extraction before submission.')
+  if (review.stage === 'draft' && !validEvidenceFile(review.evidenceFile)) blockers.push('Upload supporting evidence before sending the Draft to Product Strategy.')
+  const invalidEvidence = validateEvidence(review.evidence)
+  if (invalidEvidence) blockers.push(`Complete supporting evidence: ${invalidEvidence}`)
   if (!validTargetDate(review.targetDate)) blockers.push('Set a target completion date before submission.')
   if (getUser(review.draftOwnerId)?.role !== 'Product Management') blockers.push('Assign a Product Management draft owner.')
   for (const stage of decisionStages) {
@@ -187,7 +211,7 @@ export function decisionBlocker(review: Review, action: Action, actor: User, com
     if (!checks || !disclosureAreas.every(({ key }) => checks[key] === '' || Object.hasOwn(disclosureOutcomes, checks[key]))) return 'Choose a valid outcome for each disclosure area.'
     review = withDisclosureChecks(review, checks, actor)
   }
-  if (action === 'verify') return review.stage === 'verify' ? null : 'Only Product Strategy can run verification at its review stage.'
+  if (action === 'verify') return review.stage !== 'verify' ? 'Only Product Strategy can run verification at its review stage.' : validateEvidence(review.evidence) ? 'Upload supporting evidence and complete the records before running verification.' : null
   if (!comment.trim()) return 'A comment is required for submission, verification, endorsement, approval and return decisions.'
   if (action === 'submit') return review.stage !== 'draft' ? 'Only a Draft can be submitted.' : submissionBlockers(review)[0] ?? null
   if (review.stage === 'draft') return 'Submit the Draft before making review decisions.'
@@ -199,9 +223,9 @@ export function decisionBlocker(review: Review, action: Action, actor: User, com
   if (!review.report || review.verificationRunBy !== review.assignments.verify) return 'Product Strategy must Run Verification and review the result before acceptance.'
   const report = review.report
   if (report.blockers.length) return report.blockers[0]
-  const outcome = verificationResult(report)
-  if (outcome === 'fail') return 'Unresolved evidence discrepancies block acceptance. Reject and return the assessment to Product Management for correction.'
-  if (review.result !== outcome) return 'Run Verification again and review the updated result before acceptance.'
+  const outcome = verificationResult(crossCheck(review.claim, review.evidence, review.wording))
+  if (outcome === 'fail') return 'Discrepancy identified. Change the disclosure wording from "All" to "Some", save it and Run Verification again before approval.'
+  if (review.result !== outcome || verificationResult(report) !== outcome) return 'Run Verification again and review the updated result before acceptance.'
   if (review.stage === 'verify') return null
   const missingEvidence = evidenceBlocker(review)
   if (missingEvidence) return missingEvidence
@@ -218,11 +242,11 @@ export function transition(review: Review, action: Action, actor: User, comment 
   if (decisionBlocker(review, action, actor, comment, checks)) return review
   if (checks !== undefined) review = withDisclosureChecks(review, checks, actor)
   if (action === 'verify') {
-    const evidence = review.evidence.length ? review.evidence : illustrativeEvidence()
-    const report = crossCheck(review.claim, evidence)
+    const evidence = review.evidence
+    const report = crossCheck(review.claim, evidence, review.wording)
     const result = verificationResult(report)
     return { ...review, evidence: evidence.map(record => ({ ...record })), report, verificationRunBy: actor.id, result,
-      events: [...review.events, entry(actor, `Automated verification ${result === 'fail' ? 'identified a blocking discrepancy' : result === 'review-required' ? 'identified a coverage limitation requiring human review' : 'found no discrepancy under prototype rules'}. Product Strategy must review screening methodology, issuer coverage, exclusions and limitations, then record its decision.`, { snapshot: snapshot(review), report, evidence: report.snapshot, ...(comment.trim() ? { comment: comment.trim() } : {}) })] }
+      events: [...review.events, entry(actor, `Automated verification ${result === 'fail' ? 'identified a blocking discrepancy' : result === 'review-required' ? 'identified an unscreened issuer requiring investigation' : 'found no discrepancy under prototype rules'}. Product Strategy must review screening methodology, issuer coverage, exclusions and limitations, then record its decision.`, { snapshot: snapshot(review), report, evidence: report.snapshot, ...(comment.trim() ? { comment: comment.trim() } : {}) })] }
   }
   if (action === 'submit') {
     return { ...review, stage: 'verify', submittedBy: actor.id, report: undefined, result: null, verificationRunBy: undefined, evidenceConfirmedBy: undefined, disclosureChecks: undefined, risk: 'pending',
@@ -234,7 +258,7 @@ export function transition(review: Review, action: Action, actor: User, comment 
   }
   const nextStage = { verify: 'disclosure', disclosure: 'risk', risk: 'approved' }[review.stage as DecisionStage] as Stage
   const report = review.report
-  const decisions = { verify: `${review.result === 'review-required' ? 'Product Strategy reviewed and accepted the coverage limitation' : 'Product Strategy verification accepted'}; sent to Disclosure Team (LOD 2) for wording and consistency checks. Verification findings retained`, disclosure: 'Disclosure Team (LOD 2) endorsed the wording and consistency checks; sent to Risk / Compliance for final review', risk: 'Risk / Compliance review accepted. Assessment approved' }
+  const decisions = { verify: `${review.result === 'review-required' ? 'Product Strategy investigated the screening gap and recorded its decision' : 'Product Strategy verification accepted'}; sent to Disclosure Team (LOD 2) for wording and consistency checks. Verification findings retained`, disclosure: 'Disclosure Team (LOD 2) endorsed the wording and consistency checks; sent to Risk / Compliance for final review', risk: 'Risk / Compliance review accepted. Assessment approved' }
   return { ...review, stage: nextStage, result: verificationResult(report!), report, risk: nextStage === 'approved' ? 'resolved' : review.risk,
     events: [...review.events, entry(actor, `${decisions[review.stage as DecisionStage]}.`, { comment: comment.trim(), from: review.stage, to: nextStage, snapshot: snapshot(review), ...(report ? { report } : {}), evidence: (report?.snapshot ?? review.evidence).map(record => ({ ...record })) })] }
 }
@@ -242,8 +266,8 @@ export function task(review?: Review): string {
   if (!review) return 'Create a Draft, upload the supporting PDS and set a target completion date.'
   if (isReturnedForRevision(review)) return 'Address the reviewer comments, update the assessment and resubmit to Product Strategy for a fresh review.'
   return {
-    draft: 'Upload the supporting PDS, set a target completion date and send the Draft to Product Strategy.',
-    verify: 'Review and update the supporting screening evidence. Save any changes, Run Verification, review methodology, issuer coverage, exclusions and limitations, then Approve or Reject with a comment.',
+    draft: 'Upload the supporting PDS and a separate supporting evidence file. Review and save the evidence, set a target completion date and send the Draft to Product Strategy.',
+    verify: 'Review and edit the supporting evidence prepared by Product Management and the disclosure wording. Save any changes, Run Verification, review methodology, issuer coverage, exclusions and limitations, then Approve or Reject with a comment.',
     disclosure: 'Complete the Disclosure Team Review checklist and add review comments. Approve sends the assessment to Risk / Compliance when every item is Pass or N/A. If any item needs revision, Reject to return it to Product Management.',
     risk: 'Review the verified findings and add decision comments. Accept to mark Approved, or Reject to return the assessment to Product Management for revision.',
     approved: 'Assessment approved. Risk / Compliance continues monitoring; Internal Audit provides separate assurance.',
