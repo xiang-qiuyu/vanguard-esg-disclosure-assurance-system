@@ -37,3 +37,8 @@
  .main-tabs [data-slot=tabs-trigger][data-active] { color:var(--primary); }
  .main-tabs [data-slot=tabs-trigger]::after { background:var(--primary); }
 }
+
+@media (max-width: 639px) {
+ .main-tabs [data-slot=tabs-list] { height:auto; width:100%; flex-wrap:wrap; justify-content:flex-start; row-gap:4px; }
+ .main-tabs [data-slot=tabs-trigger] { height:44px; flex:none; padding-inline:12px; }
+}

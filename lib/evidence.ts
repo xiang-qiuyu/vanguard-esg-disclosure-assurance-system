@@ -1,7 +1,13 @@
 export type Source = 'Bloomberg' | 'MSCI'
 export type EvidenceRecord = { id: string; source: Source; security: string; name: string; included: boolean; researchAvailable: boolean; result: 'screened' | 'unscreened'; note: string }
-export type Finding = { kind: 'Unscreened security'; security: string; name: string; evidenceIds: string[]; detail: string }
+export type Finding = { kind: 'Unscreened security' | 'Unverified exclusion coverage'; security: string; name: string; evidenceIds: string[]; detail: string }
 export type CheckReport = { findings: Finding[]; blockers: string[]; snapshot: EvidenceRecord[] }
+export type VerificationResult = 'pass' | 'review-required' | 'fail'
+
+export function verificationResult(report: CheckReport): VerificationResult {
+ if (report.blockers.length || report.findings.some(finding => finding.kind !== 'Unverified exclusion coverage')) return 'fail'
+ return report.findings.length ? 'review-required' : 'pass'
+}
 
 export function validateEvidence(records: EvidenceRecord[]): string | null {
  if (!Array.isArray(records) || records.some(r => !r || !['Bloomberg', 'MSCI'].includes(r.source))) return 'Provide valid Bloomberg and MSCI evidence records.'
@@ -15,7 +21,7 @@ export function validateEvidence(records: EvidenceRecord[]): string | null {
  return null
 }
 
-export function crossCheck(claim: 'all' | 'qualified', records: EvidenceRecord[]): CheckReport {
+export function crossCheck(claim: 'all' | 'qualified' | 'example' | 'exampleQualified', records: EvidenceRecord[]): CheckReport {
  const report: CheckReport = { findings: [], blockers: [], snapshot: records.map(r => ({ ...r })) }
  const invalid = validateEvidence(records)
  if (invalid) { report.blockers.push(invalid); return report }
@@ -23,6 +29,7 @@ export function crossCheck(claim: 'all' | 'qualified', records: EvidenceRecord[]
  const research = records.find(r => r.source === 'MSCI')!
  const unscreened = !research.researchAvailable || research.result === 'unscreened'
  if (claim === 'all' && bond.included && unscreened) report.findings.push({ kind: 'Unscreened security', security: bond.security, name: bond.name, evidenceIds: [bond.id, research.id], detail: 'This security is included in the Fund, but the MSCI record shows no available research and a screening status of "Not screened". This contradicts the PDS claim that all securities are screened.' })
+ if (claim === 'example' && bond.included && unscreened) report.findings.push({ kind: 'Unverified exclusion coverage', security: bond.security, name: bond.name, evidenceIds: [bond.id, research.id], detail: 'The prepared records include this security but do not establish screening against the stated business involvement exclusions and thresholds. Product Strategy must review issuer coverage and limitations. This is a verification gap; it does not establish that the issuer breaches an exclusion.' })
  return report
 }
 
