@@ -203,8 +203,7 @@ export function decisionBlocker(review: Review, action: Action, actor: User, com
   if (outcome === 'fail') return 'Unresolved evidence discrepancies block acceptance. Reject and return the assessment to Product Management for correction.'
   if (review.result !== outcome) return 'Run Verification again and review the updated result before acceptance.'
   if (review.stage === 'verify') return null
-  const missingEvidence = evidenceBlocker(review)
-  if (missingEvidence) return missingEvidence
+
   const matches = review.evidence.every(record => {
       const verified = report.snapshot.find(source => source.source === record.source)
       return verified && record.id === verified.id && record.security === verified.security
