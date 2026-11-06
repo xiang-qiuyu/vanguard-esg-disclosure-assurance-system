@@ -37,12 +37,12 @@ export const users: readonly User[] = [
   { id: 'audit-casey', name: 'Casey Ng', role: 'Internal Audit' },
 ]
 
-export const workflow: readonly { stage: Stage; status: string; role: Role | null; lod: 'LOD 1' | 'LOD 2' | null }[] = [
-  { stage: 'draft', status: 'Draft', role: 'Product Management', lod: 'LOD 1' },
-  { stage: 'verify', status: 'Pending Product Strategy Verification', role: 'Product Strategy', lod: 'LOD 1' },
-  { stage: 'disclosure', status: 'Pending Disclosure Team Check', role: 'Disclosure Team', lod: 'LOD 2' },
-  { stage: 'risk', status: 'Pending Risk/Compliance Review', role: 'Risk / Compliance Team', lod: 'LOD 2' },
-  { stage: 'approved', status: 'Approved', role: null, lod: null },
+export const workflow: readonly { stage: Stage; status: string; role: Role | null }[] = [
+  { stage: 'draft', status: 'Draft', role: 'Product Management' },
+  { stage: 'verify', status: 'Pending Product Strategy Verification', role: 'Product Strategy' },
+  { stage: 'disclosure', status: 'Pending Disclosure Team Monitoring', role: 'Disclosure Team' },
+  { stage: 'risk', status: 'Pending Risk/Compliance Monitoring', role: 'Risk / Compliance Team' },
+  { stage: 'approved', status: 'Approved', role: null },
 ]
 export const decisionStages: readonly DecisionStage[] = ['verify', 'disclosure', 'risk']
 export type Assignments = Record<DecisionStage, string>
@@ -182,21 +182,21 @@ function evidenceBlocker(review: Review): string | null {
 export function decisionBlocker(review: Review, action: Action, actor: User, comment: string, checks?: DisclosureChecks): string | null {
   const blocked = actionBlocker(review, actor)
   if (blocked) return blocked
-  if (checks !== undefined) {
-    if (!canReviewDisclosure(review, actor) || !['accept', 'reject'].includes(action)) return 'Only Disclosure Team can record checklist outcomes with its approval or rejection.'
-    if (!checks || !disclosureAreas.every(({ key }) => checks[key] === '' || Object.hasOwn(disclosureOutcomes, checks[key]))) return 'Choose a valid outcome for each disclosure area.'
-    review = withDisclosureChecks(review, checks, actor)
-  }
   if (action === 'verify') return review.stage === 'verify' ? null : 'Only Product Strategy can run verification at its review stage.'
   if (!comment.trim()) return 'A comment is required for submission, verification, endorsement, approval and return decisions.'
   if (action === 'submit') return review.stage !== 'draft' ? 'Only a Draft can be submitted.' : submissionBlockers(review)[0] ?? null
   if (review.stage === 'draft') return 'Submit the Draft before making review decisions.'
   if (action !== 'accept' && action !== 'reject') return 'Choose Accept or Reject.'
+  if (review.stage === 'verify' && (!review.report || !review.verificationRunBy)) return 'Run First Line Review before accepting or rejecting the case.'
   if (action === 'reject') return null
   if (!review.submittedBy) return 'The assessment must be submitted by Product Management.'
   const invalid = submissionBlockers(review)
   if (invalid.length) return invalid[0]
-  if (!review.report || review.verificationRunBy !== review.assignments.verify) return 'Product Strategy must Run Verification and review the result before acceptance.'
+  if (review.stage === 'verify') return null
+  const missingEvidence = evidenceBlocker(review)
+  if (missingEvidence) return missingEvidence
+  if (review.stage === 'disclosure') return null
+  if (!review.report) return 'The final evidence cross-check must complete before Risk / Compliance acceptance.'
   const report = review.report
   if (report.blockers.length) return report.blockers[0]
   const outcome = verificationResult(report)
@@ -225,27 +225,29 @@ export function transition(review: Review, action: Action, actor: User, comment 
       events: [...review.events, entry(actor, `Automated verification ${result === 'fail' ? 'identified a blocking discrepancy' : result === 'review-required' ? 'identified a coverage limitation requiring human review' : 'found no discrepancy under prototype rules'}. Product Strategy must review screening methodology, issuer coverage, exclusions and limitations, then record its decision.`, { snapshot: snapshot(review), report, evidence: report.snapshot, ...(comment.trim() ? { comment: comment.trim() } : {}) })] }
   }
   if (action === 'submit') {
-    return { ...review, stage: 'verify', submittedBy: actor.id, report: undefined, result: null, verificationRunBy: undefined, evidenceConfirmedBy: undefined, disclosureChecks: undefined, risk: 'pending',
-      events: [...review.events, entry(actor, 'Draft and supporting PDS sent to Product Strategy (LOD 1) for technical verification. Disclosure Team (LOD 2) checks wording and consistency afterward.', { comment: comment.trim(), from: 'draft', to: 'verify', snapshot: snapshot({ ...review, evidenceConfirmedBy: undefined, disclosureChecks: undefined }) })] }
+    return { ...review, stage: 'verify', submittedBy: actor.id, report: undefined, result: null, verificationRunBy: undefined, evidenceConfirmedBy: undefined, risk: 'pending',
+      events: [...review.events, entry(actor, 'Draft sent to Product Strategy as the First Line of Defence for initial review.', { comment: comment.trim(), from: 'draft', to: 'verify', snapshot: snapshot({ ...review, evidenceConfirmedBy: undefined }) })] }
   }
   if (action === 'reject') {
     return { ...review, stage: 'draft', report: undefined, result: null, verificationRunBy: undefined, evidenceConfirmedBy: undefined, risk: review.stage === 'risk' ? 'action-required' : review.risk,
       events: [...review.events, entry(actor, `${status(review)}: Rejected and returned to Product Management as Draft, with Revisions Required. Resubmission requires the full review sequence.`, { comment: comment.trim(), from: review.stage, to: 'draft', snapshot: snapshot(review) })] }
   }
   const nextStage = { verify: 'disclosure', disclosure: 'risk', risk: 'approved' }[review.stage as DecisionStage] as Stage
-  const report = review.report
-  const decisions = { verify: `${review.result === 'review-required' ? 'Product Strategy reviewed and accepted the coverage limitation' : 'Product Strategy verification accepted'}; sent to Disclosure Team (LOD 2) for wording and consistency checks. Verification findings retained`, disclosure: 'Disclosure Team (LOD 2) endorsed the wording and consistency checks; sent to Risk / Compliance for final review', risk: 'Risk / Compliance review accepted. Assessment approved' }
-  return { ...review, stage: nextStage, result: verificationResult(report!), report, risk: nextStage === 'approved' ? 'resolved' : review.risk,
+  // Disclosure Team's endorsed evidence is the final input to the Risk / Compliance decision.
+  // Re-run the cross-check here so a corrected Product Management amendment carries a
+  // passing verification result into the monitoring stage.
+  const report = review.stage === 'disclosure' ? crossCheck(review.claim, review.evidence) : review.report
+  const decisions = { verify: 'Product Strategy First Line review accepted; sent to Disclosure Team for Second Line monitoring', disclosure: 'Disclosure Team Second Line monitoring endorsed; sent to Risk / Compliance', risk: 'Risk / Compliance Second Line monitoring accepted. Assessment approved' }
+  return { ...review, stage: nextStage, result: report && !report.blockers.length && !report.findings.length ? 'pass' : review.stage === 'disclosure' ? 'fail' : 'pass', report, exception: nextStage === 'approved' && review.exception ? 'resolved' : review.exception, risk: nextStage === 'approved' ? 'resolved' : review.risk,
     events: [...review.events, entry(actor, `${decisions[review.stage as DecisionStage]}.`, { comment: comment.trim(), from: review.stage, to: nextStage, snapshot: snapshot(review), ...(report ? { report } : {}), evidence: (report?.snapshot ?? review.evidence).map(record => ({ ...record })) })] }
 }
 export function task(review?: Review): string {
-  if (!review) return 'Create a Draft, upload the supporting PDS and set a target completion date.'
-  if (isReturnedForRevision(review)) return 'Address the reviewer comments, update the assessment and resubmit to Product Strategy for a fresh review.'
+  if (!review) return 'Create an assessment Draft and send it to Product Strategy for First Line review.'
   return {
-    draft: 'Upload the supporting PDS, set a target completion date and send the Draft to Product Strategy.',
-    verify: 'Review and update the supporting screening evidence. Save any changes, Run Verification, review methodology, issuer coverage, exclusions and limitations, then Approve or Reject with a comment.',
-    disclosure: 'Complete the Disclosure Team Review checklist and add review comments. Approve sends the assessment to Risk / Compliance when every item is Pass or N/A. If any item needs revision, Reject to return it to Product Management.',
-    risk: 'Review the verified findings and add decision comments. Accept to mark Approved, or Reject to return the assessment to Product Management for revision.',
+    draft: 'Complete the Draft and send it to Product Strategy for First Line review.',
+    verify: 'Review the proposed disclosure as the First Line of Defence. Accept to send it to Disclosure Team for Second Line monitoring, or Reject with a comment.',
+    disclosure: 'Perform Disclosure Team Second Line monitoring: prepare supporting evidence and check wording consistency across the PDS, website and marketing material.',
+    risk: 'Perform Risk / Compliance Second Line monitoring. Accept to mark Approved, or Reject to return to Draft.',
     approved: 'Assessment approved. Risk / Compliance continues monitoring; Internal Audit provides separate assurance.',
   }[review.stage]
 }

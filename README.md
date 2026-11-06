@@ -65,7 +65,7 @@ Only Product Management can upload, replace or remove the current PDS while the 
 
 The Draft starts with a highlighted **Upload the PDS** panel above the disclosure wording and a prominent **Upload PDS (PDF)** button. **Your actions** says: "Choose a PDS to populate the disclosure wording and evidence." After upload, the panel confirms success and points Product Management to the target completion date, submission comments and handoff to Product Strategy.
 
-Uploading or replacing a PDF triggers **simulated extraction** of this supplied example disclosure. The wording appears only after upload and is linked to the uploaded file. Removing the PDS clears its extraction; replacing it starts a new extraction and resets the wording. This is an upload-driven simulation, not PDF text parsing:
+**Product Management → Product Strategy (LOD 1) → Disclosure Team + Risk / Compliance monitoring (LOD 2) → Approved**
 
 > The index excludes companies that have a specified level of business involvement in fossil fuels, nuclear power, alcohol, tobacco, cannabis, gambling, adult entertainment or weapons. The index provider specifies activities, revenue or ownership thresholds or Industry Classification Benchmark (ICB) Subsector classifications for each business segment that lead to exclusion and these can vary from one business segment to another.
 
@@ -79,23 +79,18 @@ To try the normal path, upload a PDS as Product Management, send it to Product S
 
 | Team | Supporting evidence permissions |
 | --- | --- |
-| Product Management | View only; upload and maintain the PDS in Draft |
-| Product Strategy | View, edit and validate Bloomberg/MSCI screening evidence at its verification stage |
-| Disclosure Team (LOD 2) | View evidence; complete the disclosure checklist and comment before approving or rejecting |
-| Risk / Compliance (LOD 2) | View evidence; accept or reject the assessment and flag monitoring concerns after approval |
-| Internal Audit (LOD 3) | Read-only independent assurance |
+| Draft | Product Management |
+| Pending Product Strategy Verification | Product Strategy |
+| Pending Disclosure Team Monitoring | Disclosure Team |
+| Pending Risk/Compliance Monitoring | Risk / Compliance Team |
+| Approved | Review complete |
 
-Product Strategy edits the simulated screening records directly in the form, then selects **Save supporting evidence** and **Run Verification**. There is no separate screening evidence file upload.
+1. **Product Management** creates the Draft and sends it to **Product Strategy**.
+2. **Product Strategy** performs the First Line of Defence review and accepts or rejects the proposed disclosure.
+3. **Disclosure Team** performs Second Line monitoring by preparing supporting evidence and checking wording consistency across the PDS, website and marketing material.
+4. **Risk / Compliance Team** performs Second Line monitoring and accepts the assessment as **Approved**; Reject returns it to Product Management as **Draft**.
 
-## Ongoing Monitoring
-
-The dashboard distinguishes **Disclosure Status** from **Monitoring Status**. Monitoring Status defaults to **Nil** during drafting and review and remains Nil after approval until Risk / Compliance flags a concern. Verification findings and overdue dates do not automatically activate monitoring.
-
-| Monitoring Status | Meaning |
-| --- | --- |
-| Nil | No monitoring concern has been flagged |
-| Active | At least one flagged concern is still Open |
-| Addressed | Every flagged concern has been addressed by its assigned team |
+Rejecting at any review stage returns the assessment to Draft. Resubmission restarts the sequence, requiring fresh Product Strategy, Disclosure Team and Risk / Compliance reviews.
 
 Every team can access the **Ongoing Monitoring** tab and read concerns and responses for approved disclosures. Only Risk / Compliance sees **Raise a New Concern** and can use **Flag Concern**:
 
